@@ -1,3 +1,26 @@
+## A fork of GoogleSQL - Analyzer Framework for SQL
+In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI to the parser, 
+so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
+
+### Usage:
+Build:
+```sh
+bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_parser
+```
+Build artifacts can be found in `bazel-bin/googlesql/ffi`.
+
+Test:
+```sh
+bazel test //googlesql/ffi:googlesql_parser_test --test_output=all
+# fresh run: ignore cached results, rerun even if nothing changed
+bazel test //googlesql/ffi:googlesql_parser_test --nocache_test_results
+```
+
+Generate `compile_commands.json` for `clangd`:
+```sh
+bazel run //googlesql/ffi:refresh_compile_commands
+```
+
 ## GoogleSQL - Analyzer Framework for SQL
 
 > GoogleSQL was previously named ZetaSQL. Please refer to [this
