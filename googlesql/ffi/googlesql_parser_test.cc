@@ -59,6 +59,8 @@ TEST(GoogleSqlParserFfi, ReportsLocationOfSyntaxError) {
   EXPECT_THAT(d[0].message, HasSubstr("Syntax error"));
   // The error is at end of input, one past the last character.
   EXPECT_EQ(d[0].start_byte, static_cast<int>(kSql.size()));
+  // Nothing to underline there, so the range is empty.
+  EXPECT_EQ(d[0].end_byte, d[0].start_byte);
   EXPECT_EQ(d[0].line, 1);
   // No location text in the message itself; that is what the fields are for.
   EXPECT_THAT(d[0].message, ::testing::Not(HasSubstr("[at ")));
@@ -143,6 +145,8 @@ TEST(GoogleSqlParserFfi, StatementMatrix) {
     for (int i = 0; i < d.count(); ++i) {
       const int at = expected[i];
       EXPECT_EQ(d[i].start_byte, at) << "error " << i;
+      // The range covers the offending token, SELEKT.
+      EXPECT_EQ(d[i].end_byte, at + 6) << "error " << i;
       EXPECT_EQ(d[i].line, 1 + std::count(sql.begin(), sql.begin() + at, '\n'))
           << "error " << i;
       EXPECT_THAT(d[i].message, HasSubstr("SELEKT")) << "error " << i;

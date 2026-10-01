@@ -28,6 +28,9 @@ extern "C" {
 typedef struct {
   // 0-based byte offset into the sql buffer, or -1 if unknown.
   int start_byte;
+  // 0-based byte offset one past the offending token, or -1 if unknown. Equal
+  // to start_byte when the error is at end of input.
+  int end_byte;
   // 1-based line, or -1 if unknown.
   int line;
   // 1-based column, counted with tabs expanded to 8, or -1 if unknown.

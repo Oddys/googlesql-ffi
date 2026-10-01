@@ -39,6 +39,7 @@ namespace {
 // A C++-side syntax error, before it crosses the C boundary: owns its message
 struct SyntaxError {
   int start_byte;
+  int end_byte;
   int line;
   int column;
   std::string message;
@@ -101,7 +102,7 @@ std::vector<SyntaxError> CheckSyntax(absl::string_view input) {
         *language_options);
     if (status.ok()) continue;
 
-    SyntaxError item = {-1, -1, -1, std::string(status.message())};
+    SyntaxError item = {-1, -1, -1, -1, std::string(status.message())};
     googlesql::ErrorLocation location;
     if (googlesql::GetErrorLocation(status, &location)) {
       item.line = location.line();
@@ -109,6 +110,18 @@ std::vector<SyntaxError> CheckSyntax(absl::string_view input) {
       item.start_byte =
           translator.GetByteOffsetFromLineAndColumn(item.line, item.column)
               .value_or(-1);
+      // ErrorLocation is a point, not a range, so the end is computed as the
+      // end of the token the error points at. If it is impossible to tokenize
+      // (e.g. with an unterminated string) the end is -1
+      if (item.start_byte >= 0) {
+        googlesql::ParseResumeLocation probe = resume;
+        probe.set_byte_position(item.start_byte);
+        std::vector<googlesql::ParseToken> tokens;
+        if (googlesql::GetParseTokens(parse_options, &probe, &tokens).ok() &&
+            !tokens.empty()) {
+          item.end_byte = tokens[0].GetLocationRange().end().GetByteOffset();
+        }
+      }
     }
     items.push_back(item);
 
@@ -144,7 +157,7 @@ int gsql_check_syntax(const char* sql, size_t sql_len,
     // buffer. Value-initialized so a partial fill is safe to free.
     out = new gsql_syntax_error[items.size()]();
     for (const SyntaxError& item : items) {
-      out[filled] = {item.start_byte, item.line, item.column,
+      out[filled] = {item.start_byte, item.end_byte, item.line, item.column,
                      CopyMessage(item.message)};
       ++filled;
     }
