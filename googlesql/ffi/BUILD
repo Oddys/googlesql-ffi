@@ -58,13 +58,17 @@ cc_static_library(
     deps = [":googlesql_parser_ffi"],
 )
 
+# The .a files among the srcs of googlesql_parser
+ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep '\\.a$$')"
+
 # The shipped artifact
-# Command:
+# Command (macos_x86_64 example):
 #   bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_parser
-# Merges .a produced by googlesql_parser_nodeps and .a of ICU.
-# - cmd (macOS only - uses libtool's syntax, linux' `ar` works differently)
-#   - $(AR) is the archive tool. On macOS it's libtool, and libtool -static -o out.a a.a b.a merges several archives into one.
-#   - tr ' ' '\n' | grep '\.a$' keeps only the paths ending in .a, since ICU also brings along headers and other files.
+# Merges .a produced by googlesql_parser_nodeps and .a of ICU:
+# - cmd
+#   - $(AR) is the archive tool.
+#     - On macOS it's libtool
+#     - On Linux it's ar
 #   - $@ is the output path, libgooglesql_parser.a.
 #   - $$ escapes a literal $ for the shell, because Bazel uses $ for its own substitutions.
 # - toolchains: this is what makes $(AR) available. It gives the command the same archiver the C++ compiler setup uses.
@@ -75,8 +79,17 @@ genrule(
         "@icu//:icu",
     ],
     outs = ["libgooglesql_parser.a"],
-    cmd = "$(AR) -static -no_warning_for_no_symbols -o $@ " +
-          "$$(echo $(SRCS) | tr ' ' '\\n' | grep '\\.a$$')",
+    cmd = select({
+        "@platforms//os:macos": "$(AR) -static -no_warning_for_no_symbols -o $@ " + ARCHIVES,
+        # ar takes an MRI script via -M:
+        # create libgooglesql_parser.a
+        # addlib (for each .a file)
+        # save
+        # end
+        "@platforms//os:linux": "(echo 'create $@'; " +
+                                "for a in " + ARCHIVES + "; do echo \"addlib $$a\"; done; " +
+                                "echo save; echo end) | $(AR) -M",
+    }),
     toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
     visibility = ["//visibility:public"],
 )
@@ -97,5 +110,29 @@ platform(
     constraint_values = [
         "@platforms//cpu:x86_64",
         "@platforms//os:macos",
+    ],
+)
+
+platform(
+    name = "macos_arm64",
+    constraint_values = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:macos",
+    ],
+)
+
+platform(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+platform(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
     ],
 )

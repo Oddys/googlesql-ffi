@@ -3,11 +3,15 @@ In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI to the parser,
 so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
 
 ### Usage:
-Build:
+Build (on a host matching the platform):
 ```sh
+# platforms: macos_x86_64, macos_arm64, linux_x86_64, linux_aarch64
 bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_parser
 ```
 Build artifacts can be found in `bazel-bin/googlesql/ffi`.
+
+Prebuilt archives (`lib/libgooglesql_parser.a` + `include/googlesql_parser.h`) for all four platforms
+are produced by the [ffi workflow](.github/workflows/ffi.yml), run manually or on a `v*` tag.
 
 Test:
 ```sh
