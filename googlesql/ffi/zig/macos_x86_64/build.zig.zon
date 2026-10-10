@@ -1,0 +1,8 @@
+.{
+    .name = .googlesql_parser_macos_x86_64,
+    // Keep in sync with the release tag (without the leading v); CI checks this.
+    .version = "0.1.0-2026.9.1",
+    .fingerprint = 0x6c89eddd6c5a3e91, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.17.0",
+    .paths = .{ "build.zig.zon", "lib", "include" },
+}

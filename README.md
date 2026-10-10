@@ -2,6 +2,9 @@
 In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI to the parser, 
 so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
 
+### CI
+The version in build.zig.zon manifests [googlesql/ffi/zig](googlesql/ffi/zig) must match the release tag version.
+
 ### Usage:
 Build (on a host matching the platform):
 ```sh
