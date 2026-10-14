@@ -19,6 +19,17 @@ Build artifacts can be found in `bazel-bin/googlesql/ffi`.
 Prebuilt archives (`lib/libgooglesql_parser.a` + `include/googlesql_parser.h`) for all four platforms
 are produced by the [ffi workflow](.github/workflows/ffi.yml), run manually or on a `v*` tag.
 
+To create a tar locally for testing:
+```sh
+# Specify your platform
+platform=macos_x86_64
+d="googlesql_parser_$platform"
+mkdir -p $d/lib $d/include
+cp bazel-bin/googlesql/ffi/libgooglesql_parser.a $d/lib/
+cp googlesql/ffi/googlesql_parser.h $d/include/
+tar -czf $d.tar.gz $d
+```
+
 Test:
 ```sh
 bazel test //googlesql/ffi:googlesql_parser_test --test_output=all
