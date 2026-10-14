@@ -1,0 +1,6 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+BinPackParameters: OnePerLine                         # one parameter per line in declarations/definitions
+BinPackArguments: false                          # same thing for arguments at call sites
+AllowAllParametersOfDeclarationOnNextLine: false # don't put all params together on the next line
+AlignAfterOpenBracket: Align                     # align continuation params under the first one

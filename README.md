@@ -2,6 +2,9 @@
 In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI to the parser, 
 so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
 
+Handling of procedural syntax is implemented using internal [parser](googlesql/parser/parser.h)
+because scripting statements are not supported by the public API (see [parse_helpers.h](googlesql/public/parse_helpers.h:40))
+
 ### CI
 The version in build.zig.zon manifests [googlesql/ffi/zig](googlesql/ffi/zig) must match the release tag version.
 

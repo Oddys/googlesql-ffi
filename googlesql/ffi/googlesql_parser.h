@@ -44,8 +44,13 @@ typedef struct {
 // The list may be partial: input that cannot be tokenized past the last
 // reported error (an unterminated string, say) ends the scan there.
 //
-// At most one error is reported per statement: the grammar has no in-statement
-// recovery, so recovery is statement-level (skip to the next semicolon).
+// Procedural scripts (BEGIN...END, IF, WHILE, DECLARE, ...) are accepted.
+//
+// At most one error is reported per top-level statement: the grammar has no
+// in-statement recovery, so recovery skips the failed statement, a whole
+// BEGIN...END/IF/WHILE/... block included. A block with no closing END yet
+// (mid-typing) is skipped from the error to the next semicolon, so the statements
+// after it are still checked, at the cost of possible follow-up errors.
 //
 // All LanguageFeatures are enabled: an editor wants fewer false positive error
 // checks.
@@ -64,8 +69,7 @@ typedef struct {
 // Returns -1 if `errors` is NULL or does not point at a NULL pointer, if
 // `sql_len` exceeds INT_MAX, or if checking fails internally (out of memory).
 // A NULL `sql` is treated as empty input.
-int gsql_check_syntax(const char* sql, size_t sql_len,
-                      gsql_syntax_error** errors);
+int gsql_check_syntax(const char* sql, size_t sql_len, gsql_syntax_error** errors);
 
 // Frees an array populated by `gsql_check_syntax`. NULL is a no-op.
 // Passing a pointer to some other array and/or
