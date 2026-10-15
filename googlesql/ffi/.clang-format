@@ -1,0 +1,12 @@
+BasedOnStyle: Google
+ColumnLimit: 100
+BinPackParameters: OnePerLine                    # one parameter per line in declarations/definitions
+BinPackArguments: false                          # same thing for arguments at call sites
+AllowAllParametersOfDeclarationOnNextLine: false # don't put all params together on the next line
+AllowAllArgumentsOnNextLine: false               # don't put all args together on the next line
+AlignAfterOpenBracket: Align                     # align continuation params under the first one
+AllowShortIfStatementsOnASingleLine: Never       # if body always on its own line
+AllowShortLoopsOnASingleLine: false              # while/for body always on its own line
+DerivePointerAlignment: false                    # always const char* p, never guess from the code
+AllowShortFunctionsOnASingleLine: None           # function body (e.g. return) always on its own line
+AllowShortLambdasOnASingleLine: None             # same for lambdas

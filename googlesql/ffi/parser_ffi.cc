@@ -30,39 +30,39 @@ googlesql::ParserOptions MakeParserOptions() {
   language_options.EnableMaximumLanguageFeatures();
   language_options.SetSupportsAllStatementKinds();
   return googlesql::ParserOptions(
-      /*id_string_pool=*/nullptr, /*arena=*/nullptr, language_options,
-      {.mode = googlesql::ERROR_MESSAGE_WITH_PAYLOAD,
-       .attach_error_location_payload = true},
-      googlesql::parser::MacroExpansionMode::kNone, /*macro_catalog=*/nullptr);
+      /*id_string_pool=*/nullptr,
+      /*arena=*/nullptr,
+      language_options,
+      {.mode = googlesql::ERROR_MESSAGE_WITH_PAYLOAD, .attach_error_location_payload = true},
+      googlesql::parser::MacroExpansionMode::kNone,
+      /*macro_catalog=*/nullptr);
 }
 
 // Byte offset of the error in `status`, or `fallback` if it has none.
-int ErrorOffset(const absl::Status &status,
-                const googlesql::ParseLocationTranslator &translator,
+int ErrorOffset(const absl::Status& status,
+                const googlesql::ParseLocationTranslator& translator,
                 int fallback) {
   googlesql::ErrorLocation location;
   if (!googlesql::GetErrorLocation(status, &location))
     return fallback;
-  absl::StatusOr<int> offset = translator.GetByteOffsetFromLineAndColumn(
-      location.line(), location.column());
+  absl::StatusOr<int> offset =
+      translator.GetByteOffsetFromLineAndColumn(location.line(), location.column());
   return offset.ok() ? *offset : fallback;
 }
 
-// Appends each syntax error to `errors`. Returns false on internal failure.
-bool CollectSyntaxErrors(absl::string_view sql,
-                         std::vector<SyntaxError> &errors) {
+// Appends each syntax error to `errors`.
+// Returns false on internal failure.
+bool CollectSyntaxErrors(absl::string_view sql, std::vector<SyntaxError>& errors) {
   if (NothingSignificantFrom(sql, 0))
     return true;
   const googlesql::ParserOptions options = MakeParserOptions();
   const googlesql::ParseLocationTranslator translator(sql);
-  googlesql::ParseResumeLocation location =
-      googlesql::ParseResumeLocation::FromStringView(sql);
+  googlesql::ParseResumeLocation location = googlesql::ParseResumeLocation::FromStringView(sql);
   bool at_end = false;
   while (!at_end) {
     const int stmt_start = location.byte_position();
     std::unique_ptr<googlesql::ParserOutput> output;
-    absl::Status status = googlesql::ParseNextScriptStatement(
-        &location, options, &output, &at_end);
+    absl::Status status = googlesql::ParseNextScriptStatement(&location, options, &output, &at_end);
     if (status.ok())
       continue;
     if (!absl::IsInvalidArgument(status))
@@ -72,16 +72,16 @@ bool CollectSyntaxErrors(absl::string_view sql,
     errors.push_back({start, end, std::string(status.message())});
     int next = SkipStatement(sql, stmt_start, error_offset);
     if (next <= stmt_start)
-      next = static_cast<int>(sql.size()); // progress
+      next = static_cast<int>(sql.size());  // progress
     location.set_byte_position(next);
     at_end = NothingSignificantFrom(sql, next);
   }
   return true;
 }
 
-} // namespace
+}  // namespace
 
-extern "C" int check_syntax(const char *sql, size_t len, findings *out) {
+extern "C" int check_syntax(const char* sql, size_t len, findings* out) {
   if (out == nullptr)
     return 1;
   *out = {nullptr, 0};
@@ -94,14 +94,17 @@ extern "C" int check_syntax(const char *sql, size_t len, findings *out) {
       return 1;
     if (errors.empty())
       return 0;
-    out->items = new syntax_error[errors.size()](); // zeroed
+    out->items = new syntax_error[errors.size()]();  // zeroed
     for (size_t i = 0; i < errors.size(); ++i) {
-      const std::string &text = errors[i].message;
-      char *message = new char[text.size() + 1];
+      const std::string& text = errors[i].message;
+      char* message = new char[text.size() + 1];
       std::memcpy(message, text.c_str(), text.size() + 1);
-      out->items[i] = {static_cast<uint32_t>(errors[i].start),
-                       static_cast<uint32_t>(errors[i].end), message};
-      out->count = i + 1; // free only ever touches filled items
+      out->items[i] = {
+          static_cast<uint32_t>(errors[i].start),
+          static_cast<uint32_t>(errors[i].end),
+          message,
+      };
+      out->count = i + 1;  // free only ever touches filled items
     }
     return 0;
   } catch (...) {
@@ -110,7 +113,7 @@ extern "C" int check_syntax(const char *sql, size_t len, findings *out) {
   }
 }
 
-extern "C" void free_findings(findings *out) {
+extern "C" void free_findings(findings* out) {
   if (out == nullptr)
     return;
   for (size_t i = 0; i < out->count; ++i)

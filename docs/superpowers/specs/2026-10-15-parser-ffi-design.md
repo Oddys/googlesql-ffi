@@ -28,6 +28,10 @@ document on each change.
 | Targets | macOS arm64 + x86_64, Linux x86_64 + aarch64; one native build per target. Windows out of scope (GoogleSQL does not build there). |
 | Line endings | `\n`, `\r\n` and lone `\r` all end a line, regardless of host OS (matches `ParseLocationTranslator`). |
 
+## Code style
+
+Code style: `googlesql/ffi/.clang-format` (Google base, 100 columns). An `if`/`while`/`for` body and a function body (including a lone `return`) always go on their own line. Arguments and parameters that don't fit on one line go one per line. A braced init list that doesn't fit on one line gets a trailing comma, so clang-format puts one element per line (a trailing comma in a function call doesn't compile). Comments are filled to 100 columns. A multi-sentence function comment puts one idea per line (summary, each return case, each guarantee), using a `Returns:` list when there are several outcomes. Names keep the GoogleSQL (Google) convention.
+
 ## C API — `googlesql/ffi/parser_ffi.h`
 
 ```c
@@ -50,13 +54,13 @@ typedef struct {
 } findings;
 
 // Checks GoogleSQL syntax in sql[0..len); sql need not be NUL-terminated.
-// Returns 0 and fills *out (count == 0 means the input is clean).
-// Returns non-zero only on internal failure or len > INT32_MAX; *out is then
-// empty ({NULL, 0}).
+// Returns:
+// - 0 and fills `out` (count == 0 means the input is clean).
+// - non-zero only on internal failure or len > INT32_MAX; `out` is then empty ({NULL, 0}).
 int check_syntax(const char* sql, size_t len, findings* out);
 
-// Frees everything check_syntax allocated in *out and resets it to
-// {NULL, 0}. Safe on an empty result.
+// Frees everything check_syntax allocated in *out and resets it to {NULL, 0}.
+// Safe on an empty result.
 void free_findings(findings* out);
 
 #ifdef __cplusplus
@@ -102,13 +106,12 @@ input (`parser.cc` converts against `resume_location->input()`).
 ## Token helpers — `helpers.{h,cc}` (internal C++)
 
 ```cpp
-// [start, end) of the first non-comment token at or after `offset`.
-// EOI → {len, len}. Tokenizer error → {offset, end of line}.
+// [start, end) of the first non-comment token at or after `offset`. EOI → {len, len}. Tokenizer
+// error → {offset, end of line}.
 std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset);
 
-// Byte position just after the first top-level ';' (depth 0) that lies at or
-// after `error_offset`, scanning from `stmt_start`. Returns sql.size() if none
-// exists or the tokenizer fails.
+// Byte position just after the first top-level ';' (depth 0) that lies at or after `error_offset`,
+// scanning from `stmt_start`. Returns sql.size() if none exists or the tokenizer fails.
 int SkipStatement(absl::string_view sql, int stmt_start, int error_offset);
 ```
 
@@ -158,7 +161,8 @@ after `error_offset`.
 A third helper reports whether only whitespace and comments remain:
 
 ```cpp
-// True if only whitespace/comments remain from `offset`. False on tokenizer error.
+// True if only whitespace/comments remain from `offset`.
+// False on tokenizer error.
 bool NothingSignificantFrom(absl::string_view sql, int offset);
 ```
 

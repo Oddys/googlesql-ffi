@@ -19,8 +19,7 @@ using ::googlesql::parser::Token;
 using ::googlesql::parser::TokenWithLocation;
 
 // Next non-comment token, or nullopt if the tokenizer fails.
-std::optional<TokenWithLocation>
-NextSignificant(GoogleSqlTokenizer &tokenizer) {
+std::optional<TokenWithLocation> NextSignificant(GoogleSqlTokenizer& tokenizer) {
   while (true) {
     absl::StatusOr<TokenWithLocation> token = tokenizer.GetNextToken();
     if (!token.ok())
@@ -31,21 +30,21 @@ NextSignificant(GoogleSqlTokenizer &tokenizer) {
 }
 
 // BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
-bool BeginsTransaction(const std::optional<TokenWithLocation> &next) {
+bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
   if (!next.has_value())
     return true;
   switch (next->kind) {
-  case Token::EOI:
-  case Token::SEMICOLON:
-  case Token::KW_TRANSACTION:
-  case Token::KW_ISOLATION:
-  case Token::KW_READ:
-    return true;
-  default:
-    return false;
+    case Token::EOI:
+    case Token::SEMICOLON:
+    case Token::KW_TRANSACTION:
+    case Token::KW_ISOLATION:
+    case Token::KW_READ:
+      return true;
+    default:
+      return false;
   }
 }
-} // namespace
+}  // namespace
 
 std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, offset);
@@ -60,8 +59,7 @@ std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
   if (token->kind == Token::EOI) {
     return {static_cast<int>(sql.size()), static_cast<int>(sql.size())};
   }
-  return {token->location.start().GetByteOffset(),
-          token->location.end().GetByteOffset()};
+  return {token->location.start().GetByteOffset(), token->location.end().GetByteOffset()};
 }
 
 bool NothingSignificantFrom(absl::string_view sql, int offset) {
@@ -76,7 +74,7 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
   int paren_depth = 0;
   // True when the previous token lets a new statement begin here.
   bool after_boundary = true;
-  Token prev = Token::EOI; // EOI stands for "no previous token".
+  Token prev = Token::EOI;  // EOI stands for "no previous token".
   // Top-level CREATE ... PROCEDURE seen; its first depth-0 BEGIN is the body.
   bool create_first = true, in_create = false, proc_seen = false;
 
@@ -86,39 +84,37 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
     std::optional<TokenWithLocation> next = NextSignificant(tokenizer);
     const Token kind = token->kind;
     const bool at_statement_start =
-        after_boundary && paren_depth == 0 &&
-        (frames.empty() || frames.back() != Frame::kCaseExpr);
+        after_boundary && paren_depth == 0 && (frames.empty() || frames.back() != Frame::kCaseExpr);
     bool opened_block = false;
 
     // A keyword right after END closes (END IF, END CASE, ...); never opens.
     if (prev != Token::KW_END) {
       switch (kind) {
-      case Token::KW_BEGIN:
-        // BEGIN is non-reserved: only a block at statement start or as a
-        // procedure body after ')'.
-        if ((at_statement_start || prev == Token::RPAREN ||
-             (proc_seen && paren_depth == 0)) &&
-            !BeginsTransaction(next)) {
-          frames.push_back(Frame::kBlock);
-          opened_block = true;
-          proc_seen = false;
-        }
-        break;
-      case Token::KW_CASE:
-        frames.push_back(at_statement_start ? Frame::kBlock : Frame::kCaseExpr);
-        break;
-      case Token::KW_IF:
-      case Token::KW_LOOP:
-      case Token::KW_WHILE:
-      case Token::KW_REPEAT:
-      case Token::KW_FOR:
-        if (at_statement_start) {
-          frames.push_back(Frame::kBlock);
-          opened_block = true;
-        }
-        break;
-      default:
-        break;
+        case Token::KW_BEGIN:
+          // BEGIN is non-reserved, so it opens a block only at statement start
+          // or as a procedure body after ')'.
+          if ((at_statement_start || prev == Token::RPAREN || (proc_seen && paren_depth == 0)) &&
+              !BeginsTransaction(next)) {
+            frames.push_back(Frame::kBlock);
+            opened_block = true;
+            proc_seen = false;
+          }
+          break;
+        case Token::KW_CASE:
+          frames.push_back(at_statement_start ? Frame::kBlock : Frame::kCaseExpr);
+          break;
+        case Token::KW_IF:
+        case Token::KW_LOOP:
+        case Token::KW_WHILE:
+        case Token::KW_REPEAT:
+        case Token::KW_FOR:
+          if (at_statement_start) {
+            frames.push_back(Frame::kBlock);
+            opened_block = true;
+          }
+          break;
+        default:
+          break;
       }
     }
 
@@ -129,43 +125,40 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
       proc_seen = true;
 
     switch (kind) {
-    case Token::LPAREN:
-      ++paren_depth;
-      break;
-    case Token::RPAREN:
-      paren_depth = std::max(0, paren_depth - 1);
-      break;
-    case Token::KW_END:
-      if (!frames.empty())
-        frames.pop_back();
-      break;
-    case Token::SEMICOLON:
-      create_first = true;
-      in_create = proc_seen = false;
-      paren_depth = 0; // ';' never sits inside parentheses in valid SQL.
-      // A CASE expression cannot contain ';', so any open one is unclosed.
-      while (!frames.empty() && frames.back() == Frame::kCaseExpr) {
-        frames.pop_back();
-      }
-      if (frames.empty() &&
-          token->location.start().GetByteOffset() >= error_offset) {
-        return token->location.end().GetByteOffset();
-      }
-      break;
-    default:
-      break;
+      case Token::LPAREN:
+        ++paren_depth;
+        break;
+      case Token::RPAREN:
+        paren_depth = std::max(0, paren_depth - 1);
+        break;
+      case Token::KW_END:
+        if (!frames.empty())
+          frames.pop_back();
+        break;
+      case Token::SEMICOLON:
+        create_first = true;
+        in_create = proc_seen = false;
+        paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
+        // A CASE expression cannot contain ';', so any open one is unclosed.
+        while (!frames.empty() && frames.back() == Frame::kCaseExpr) {
+          frames.pop_back();
+        }
+        if (frames.empty() && token->location.start().GetByteOffset() >= error_offset) {
+          return token->location.end().GetByteOffset();
+        }
+        break;
+      default:
+        break;
     }
 
-    after_boundary =
-        kind == Token::SEMICOLON || kind == Token::KW_THEN ||
-        kind == Token::KW_ELSE || kind == Token::KW_DO ||
-        kind == Token::COLON ||
-        (opened_block && (kind == Token::KW_BEGIN || kind == Token::KW_LOOP ||
-                          kind == Token::KW_REPEAT));
+    after_boundary = kind == Token::SEMICOLON || kind == Token::KW_THEN || kind == Token::KW_ELSE ||
+                     kind == Token::KW_DO || kind == Token::COLON ||
+                     (opened_block && (kind == Token::KW_BEGIN || kind == Token::KW_LOOP ||
+                                       kind == Token::KW_REPEAT));
     prev = kind;
     token = std::move(next);
   }
   return static_cast<int>(sql.size());
 }
 
-} // namespace googlesql::ffi
+}  // namespace googlesql::ffi

@@ -19,17 +19,18 @@ std::vector<SyntaxError> CheckSyntax(absl::string_view sql) {
   EXPECT_EQ(check_syntax(sql.data(), sql.size(), &out), 0);
   std::vector<SyntaxError> result;
   for (size_t i = 0; i < out.count; ++i) {
-    result.push_back({static_cast<int>(out.items[i].start),
-                      static_cast<int>(out.items[i].end),
-                      out.items[i].message});
+    result.push_back({
+        static_cast<int>(out.items[i].start),
+        static_cast<int>(out.items[i].end),
+        out.items[i].message,
+    });
   }
   free_findings(&out);
   return result;
 }
 
 // [start, end) of the n-th (0-based) occurrence of `needle` in `sql`.
-std::pair<int, int> At(absl::string_view sql, absl::string_view needle,
-                       int n = 0) {
+std::pair<int, int> At(absl::string_view sql, absl::string_view needle, int n = 0) {
   size_t pos = sql.find(needle);
   for (int i = 0; i < n && pos != absl::string_view::npos; ++i) {
     pos = sql.find(needle, pos + 1);
@@ -38,7 +39,9 @@ std::pair<int, int> At(absl::string_view sql, absl::string_view needle,
   return {static_cast<int>(pos), static_cast<int>(pos + needle.size())};
 }
 
-std::pair<int, int> Range(const SyntaxError &e) { return {e.start, e.end}; }
+std::pair<int, int> Range(const SyntaxError& e) {
+  return {e.start, e.end};
+}
 
 constexpr absl::string_view kCleanScript = R"sql(
 -- leading comment
@@ -61,11 +64,14 @@ FROM t |> WHERE true |> SELECT *;
 )sql";
 
 TEST(ParserFfiTest, CleanInputsHaveNoSyntaxErrors) {
-  for (absl::string_view sql :
-       {absl::string_view(""), absl::string_view("  \n\t"),
-        absl::string_view("-- only a comment\n/* and another */"),
-        absl::string_view("SELECT 1"),
-        absl::string_view("SELECT 1;\nSELECT 2;"), kCleanScript}) {
+  for (absl::string_view sql : {
+           absl::string_view(""),
+           absl::string_view("  \n\t"),
+           absl::string_view("-- only a comment\n/* and another */"),
+           absl::string_view("SELECT 1"),
+           absl::string_view("SELECT 1;\nSELECT 2;"),
+           kCleanScript,
+       }) {
     EXPECT_TRUE(CheckSyntax(sql).empty()) << sql;
   }
 }
@@ -75,10 +81,8 @@ TEST(ParserFfiTest, ErrorRangeIsOffendingToken) {
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
-  EXPECT_TRUE(absl::StartsWith(errors[0].message, "Syntax error"))
-      << errors[0].message;
-  EXPECT_FALSE(absl::StrContains(errors[0].message, "[at "))
-      << errors[0].message;
+  EXPECT_TRUE(absl::StartsWith(errors[0].message, "Syntax error")) << errors[0].message;
+  EXPECT_FALSE(absl::StrContains(errors[0].message, "[at ")) << errors[0].message;
 }
 
 TEST(ParserFfiTest, ErrorAfterMultibyteAndTabs) {
@@ -106,8 +110,8 @@ TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   constexpr absl::string_view sql = "SELECT 1 +";
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
-  EXPECT_EQ(Range(errors[0]), std::make_pair(static_cast<int>(sql.size()),
-                                             static_cast<int>(sql.size())));
+  EXPECT_EQ(Range(errors[0]),
+            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
@@ -127,7 +131,7 @@ TEST(ParserFfiTest, UnterminatedStringRangeStopsBeforeCrlf) {
 TEST(ParserFfiTest, InputNeedNotBeNulTerminated) {
   const std::string buffer = "SELECT 1;garbage(";
   findings out;
-  ASSERT_EQ(check_syntax(buffer.data(), 9, &out), 0); // "SELECT 1;"
+  ASSERT_EQ(check_syntax(buffer.data(), 9, &out), 0);  // "SELECT 1;"
   EXPECT_EQ(out.count, 0);
   free_findings(&out);
 }
@@ -163,8 +167,7 @@ TEST(ParserFfiTest, ReportsEveryTopLevelError) {
 }
 
 TEST(ParserFfiTest, ErrorInsideBlockSkipsWholeBlock) {
-  constexpr absl::string_view sql =
-      "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
+  constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
@@ -174,8 +177,8 @@ TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
   constexpr absl::string_view sql = "SELECT 1;\nSELECT 2 +";
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
-  EXPECT_EQ(Range(errors[0]), std::make_pair(static_cast<int>(sql.size()),
-                                             static_cast<int>(sql.size())));
+  EXPECT_EQ(Range(errors[0]),
+            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
 }
 
 // Accepted limit: a missing END makes recovery run to EOF.
@@ -203,8 +206,8 @@ TEST(ParserFfiTest, UnclosedCaseExprDoesNotFlagValidCode) {
   EXPECT_EQ(Range(errors[1]), At(sql, "8"));
 }
 
-// Each trap is a broken statement (or block) followed by a second broken
-// statement. If the skipper over-skips, the second error ("8") is lost.
+// Each trap is a broken statement (or block) followed by a second broken statement.
+// If skipping over-skips, the second error ("8") is lost.
 class SkippingTrapTest : public ::testing::TestWithParam<absl::string_view> {};
 
 TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
@@ -216,30 +219,33 @@ TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Traps, SkippingTrapTest,
-    ::testing::Values(
-        "SELECT IF(true, 1, 2) );", "CREATE TABLE IF NOT EXISTS t (x INT64) );",
-        "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
-        "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
-        "SELECT CASE WHEN true THEN 1 FROM t;", "SELECT begin FROM t );",
-        "BEGIN TRANSACTION );",
-        "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
-        "BEGIN BEGIN SELECT 1 2; END; END;", "END;",
-        "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
-        "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
-        "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
-        "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; "
-        "END;",
-        "CREATE PROCEDURE p() EXTERNAL SECURITY INVOKER BEGIN SELECT 1 2; "
-        "SELECT 3; END;",
-        "CREATE PROCEDURE p() WITH CONNECTION c BEGIN SELECT 1 2; SELECT 3; "
-        "END;",
-        "WHILE true DO SELECT 1 2; END WHILE;",
-        "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
-        "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
-        "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
-        "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
-        "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
-        "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
+    Traps,
+    SkippingTrapTest,
+    ::testing::Values("SELECT IF(true, 1, 2) );",
+                      "CREATE TABLE IF NOT EXISTS t (x INT64) );",
+                      "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
+                      "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
+                      "SELECT CASE WHEN true THEN 1 FROM t;",
+                      "SELECT begin FROM t );",
+                      "BEGIN TRANSACTION );",
+                      "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
+                      "BEGIN BEGIN SELECT 1 2; END; END;",
+                      "END;",
+                      "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
+                      "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
+                      "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
+                      "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; "
+                      "END;",
+                      "CREATE PROCEDURE p() EXTERNAL SECURITY INVOKER BEGIN SELECT 1 2; "
+                      "SELECT 3; END;",
+                      "CREATE PROCEDURE p() WITH CONNECTION c BEGIN SELECT 1 2; SELECT 3; "
+                      "END;",
+                      "WHILE true DO SELECT 1 2; END WHILE;",
+                      "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
+                      "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
+                      "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
+                      "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
+                      "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
+                      "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
 
-} // namespace
+}  // namespace

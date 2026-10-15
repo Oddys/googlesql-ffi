@@ -22,6 +22,7 @@
 - Build artifact: `bazel build //googlesql/ffi:googlesql_parser_ffi` produces `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a`.
 - Recovery granularity is the top-level script statement (option A). Inner-block recovery is out of scope.
 - Targets: macOS arm64 + x86_64, Linux x86_64 + aarch64. Build natively on each (or `--cpu=darwin_x86_64` from Apple Silicon). Windows is out of scope: GoogleSQL does not build there. No `#ifdef` per OS in the library code.
+- Code style: `googlesql/ffi/.clang-format` (Google base, 100 columns). An `if`/`while`/`for` body and a function body (including a lone `return`) always go on their own line. Arguments and parameters that don't fit on one line go one per line. A braced init list that doesn't fit on one line gets a trailing comma, so clang-format puts one element per line (a trailing comma in a function call doesn't compile). Comments are filled to 100 columns. A multi-sentence function comment puts one idea per line (summary, each return case, each guarantee), using a `Returns:` list when there are several outcomes. Names keep the GoogleSQL (Google) convention.
 - Line endings are a property of the input, not the host: `\n`, `\r\n` and lone `\r` all end a line, as in `ParseLocationTranslator::CalculateLineOffsets`.
 
 ## Review Focus
@@ -89,14 +90,16 @@ typedef struct {
 } findings;
 
 // Checks GoogleSQL syntax in sql[0..len); sql need not be NUL-terminated.
-// Returns 0 and fills *out (count == 0 means the input is clean).
-// Returns non-zero only on internal failure, len > INT32_MAX, out == NULL,
-// or sql == NULL with len != 0; *out is then {NULL, 0} (if out != NULL).
-// Syntax errors are sorted by start and never overlap. Thread-safe.
+// Returns:
+// - 0 and fills `out` (count == 0 means the input is clean).
+// - non-zero on internal failure, len > INT32_MAX, out == NULL, or sql == NULL with len != 0;
+//   `out` is then {NULL, 0} (if out != NULL).
+// Syntax errors are sorted by start and never overlap.
+// Thread-safe.
 int check_syntax(const char* sql, size_t len, findings* out);
 
-// Frees everything check_syntax allocated in *out and resets it to
-// {NULL, 0}. Safe on an empty result and on NULL.
+// Frees everything check_syntax allocated in *out and resets it to {NULL, 0}.
+// Safe on an empty result and on NULL.
 void free_findings(findings* out);
 
 #ifdef __cplusplus
@@ -111,15 +114,14 @@ void free_findings(findings* out);
 `googlesql/ffi/parser_ffi_test.cc`:
 
 ```cpp
-#include "googlesql/ffi/parser_ffi.h"
-
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "gtest/gtest.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "googlesql/ffi/parser_ffi.h"
+#include "gtest/gtest.h"
 
 namespace {
 
@@ -134,17 +136,18 @@ std::vector<SyntaxError> CheckSyntax(absl::string_view sql) {
   EXPECT_EQ(check_syntax(sql.data(), sql.size(), &out), 0);
   std::vector<SyntaxError> result;
   for (size_t i = 0; i < out.count; ++i) {
-    result.push_back({static_cast<int>(out.items[i].start),
-                      static_cast<int>(out.items[i].end),
-                      out.items[i].message});
+    result.push_back({
+        static_cast<int>(out.items[i].start),
+        static_cast<int>(out.items[i].end),
+        out.items[i].message,
+    });
   }
   free_findings(&out);
   return result;
 }
 
 // [start, end) of the n-th (0-based) occurrence of `needle` in `sql`.
-std::pair<int, int> At(absl::string_view sql, absl::string_view needle,
-                       int n = 0) {
+std::pair<int, int> At(absl::string_view sql, absl::string_view needle, int n = 0) {
   size_t pos = sql.find(needle);
   for (int i = 0; i < n && pos != absl::string_view::npos; ++i) {
     pos = sql.find(needle, pos + 1);
@@ -153,7 +156,9 @@ std::pair<int, int> At(absl::string_view sql, absl::string_view needle,
   return {static_cast<int>(pos), static_cast<int>(pos + needle.size())};
 }
 
-std::pair<int, int> Range(const SyntaxError& e) { return {e.start, e.end}; }
+std::pair<int, int> Range(const SyntaxError& e) {
+  return {e.start, e.end};
+}
 
 constexpr absl::string_view kCleanScript = R"sql(
 -- leading comment
@@ -176,11 +181,14 @@ FROM t |> WHERE true |> SELECT *;
 )sql";
 
 TEST(ParserFfiTest, CleanInputsHaveNoSyntaxErrors) {
-  for (absl::string_view sql :
-       {absl::string_view(""), absl::string_view("  \n\t"),
-        absl::string_view("-- only a comment\n/* and another */"),
-        absl::string_view("SELECT 1"),
-        absl::string_view("SELECT 1;\nSELECT 2;"), kCleanScript}) {
+  for (absl::string_view sql : {
+           absl::string_view(""),
+           absl::string_view("  \n\t"),
+           absl::string_view("-- only a comment\n/* and another */"),
+           absl::string_view("SELECT 1"),
+           absl::string_view("SELECT 1;\nSELECT 2;"),
+           kCleanScript,
+       }) {
     EXPECT_TRUE(CheckSyntax(sql).empty()) << sql;
   }
 }
@@ -220,8 +228,7 @@ TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]),
-            std::make_pair(static_cast<int>(sql.size()),
-                           static_cast<int>(sql.size())));
+            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
@@ -326,11 +333,13 @@ cc_test(
 #include "googlesql/ffi/parser_ffi.h"
 
 extern "C" int check_syntax(const char*, size_t, findings* out) {
-  if (out != nullptr) *out = {nullptr, 0};
+  if (out != nullptr)
+    *out = {nullptr, 0};
   return 0;
 }
 
-extern "C" void free_findings(findings*) {}
+extern "C" void free_findings(findings*) {
+}
 ```
 
 Leave `helpers.cc` as just `#include "googlesql/ffi/helpers.h"`, with the header from Step 5.
@@ -350,9 +359,9 @@ Expected: FAIL. The error-range tests report `errors.size()` 0 instead of 1, and
 
 namespace googlesql::ffi {
 
-// [start, end) byte range of the first non-comment token at or after
-// `offset`. At end of input returns {sql.size(), sql.size()}. If the tokenizer
-// fails (e.g. unterminated string), returns {offset, end of that line}.
+// [start, end) byte range of the first non-comment token at or after `offset`.
+// Returns {sql.size(), sql.size()} at end of input.
+// Returns {offset, end of that line} if the tokenizer fails (e.g. unterminated string).
 std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset);
 
 // True if only whitespace and comments remain from `offset`.
@@ -367,16 +376,15 @@ bool NothingSignificantFrom(absl::string_view sql, int offset);
 - [ ] **Step 6: Implement `helpers.cc`**
 
 ```cpp
-#include "googlesql/ffi/helpers.h"
-
 #include <optional>
 #include <utility>
 
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "googlesql/ffi/helpers.h"
 #include "googlesql/parser/tm_token.h"
 #include "googlesql/parser/token_with_location.h"
 #include "googlesql/parser/tokenizer.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 
 namespace googlesql::ffi {
 namespace {
@@ -389,8 +397,10 @@ using ::googlesql::parser::TokenWithLocation;
 std::optional<TokenWithLocation> NextSignificant(GoogleSqlTokenizer& tokenizer) {
   while (true) {
     absl::StatusOr<TokenWithLocation> token = tokenizer.GetNextToken();
-    if (!token.ok()) return std::nullopt;
-    if (token->kind != Token::COMMENT) return *token;
+    if (!token.ok())
+      return std::nullopt;
+    if (token->kind != Token::COMMENT)
+      return *token;
   }
 }
 
@@ -402,14 +412,14 @@ std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
   if (!token.has_value()) {
     // Any of \n, \r\n, \r ends the line (same as ParseLocationTranslator).
     size_t eol = sql.find_first_of("\r\n", offset);
-    if (eol == absl::string_view::npos) eol = sql.size();
+    if (eol == absl::string_view::npos)
+      eol = sql.size();
     return {offset, static_cast<int>(eol)};
   }
   if (token->kind == Token::EOI) {
     return {static_cast<int>(sql.size()), static_cast<int>(sql.size())};
   }
-  return {token->location.start().GetByteOffset(),
-          token->location.end().GetByteOffset()};
+  return {token->location.start().GetByteOffset(), token->location.end().GetByteOffset()};
 }
 
 bool NothingSignificantFrom(absl::string_view sql, int offset) {
@@ -424,15 +434,17 @@ bool NothingSignificantFrom(absl::string_view sql, int offset) {
 - [ ] **Step 7: Implement `parser_ffi.cc` (stops at the first error)**
 
 ```cpp
-#include "googlesql/ffi/parser_ffi.h"
-
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "googlesql/ffi/helpers.h"
+#include "googlesql/ffi/parser_ffi.h"
 #include "googlesql/parser/parser.h"
 #include "googlesql/public/error_helpers.h"
 #include "googlesql/public/error_location.pb.h"
@@ -440,9 +452,6 @@ bool NothingSignificantFrom(absl::string_view sql, int offset) {
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/parse_location.h"
 #include "googlesql/public/parse_resume_location.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 
 namespace {
 
@@ -460,10 +469,12 @@ googlesql::ParserOptions MakeParserOptions() {
   language_options.EnableMaximumLanguageFeatures();
   language_options.SetSupportsAllStatementKinds();
   return googlesql::ParserOptions(
-      /*id_string_pool=*/nullptr, /*arena=*/nullptr, language_options,
-      {.mode = googlesql::ERROR_MESSAGE_WITH_PAYLOAD,
-       .attach_error_location_payload = true},
-      googlesql::parser::MacroExpansionMode::kNone, /*macro_catalog=*/nullptr);
+      /*id_string_pool=*/nullptr,
+      /*arena=*/nullptr,
+      language_options,
+      {.mode = googlesql::ERROR_MESSAGE_WITH_PAYLOAD, .attach_error_location_payload = true},
+      googlesql::parser::MacroExpansionMode::kNone,
+      /*macro_catalog=*/nullptr);
 }
 
 // Byte offset of the error in `status`, or `fallback` if it has none.
@@ -471,28 +482,30 @@ int ErrorOffset(const absl::Status& status,
                 const googlesql::ParseLocationTranslator& translator,
                 int fallback) {
   googlesql::ErrorLocation location;
-  if (!googlesql::GetErrorLocation(status, &location)) return fallback;
-  absl::StatusOr<int> offset = translator.GetByteOffsetFromLineAndColumn(
-      location.line(), location.column());
+  if (!googlesql::GetErrorLocation(status, &location))
+    return fallback;
+  absl::StatusOr<int> offset =
+      translator.GetByteOffsetFromLineAndColumn(location.line(), location.column());
   return offset.ok() ? *offset : fallback;
 }
 
-// Appends each syntax error to `errors`. Returns false on internal failure.
-bool CollectSyntaxErrors(absl::string_view sql,
-                         std::vector<SyntaxError>& errors) {
-  if (NothingSignificantFrom(sql, 0)) return true;
+// Appends each syntax error to `errors`.
+// Returns false on internal failure.
+bool CollectSyntaxErrors(absl::string_view sql, std::vector<SyntaxError>& errors) {
+  if (NothingSignificantFrom(sql, 0))
+    return true;
   const googlesql::ParserOptions options = MakeParserOptions();
   const googlesql::ParseLocationTranslator translator(sql);
-  googlesql::ParseResumeLocation location =
-      googlesql::ParseResumeLocation::FromStringView(sql);
+  googlesql::ParseResumeLocation location = googlesql::ParseResumeLocation::FromStringView(sql);
   bool at_end = false;
   while (!at_end) {
     const int stmt_start = location.byte_position();
     std::unique_ptr<googlesql::ParserOutput> output;
-    absl::Status status = googlesql::ParseNextScriptStatement(
-        &location, options, &output, &at_end);
-    if (status.ok()) continue;
-    if (!absl::IsInvalidArgument(status)) return false;
+    absl::Status status = googlesql::ParseNextScriptStatement(&location, options, &output, &at_end);
+    if (status.ok())
+      continue;
+    if (!absl::IsInvalidArgument(status))
+      return false;
     const int error_offset = ErrorOffset(status, translator, stmt_start);
     auto [start, end] = TokenRangeAt(sql, error_offset);
     errors.push_back({start, end, std::string(status.message())});
@@ -504,29 +517,37 @@ bool CollectSyntaxErrors(absl::string_view sql,
 }  // namespace
 
 extern "C" int check_syntax(const char* sql, size_t len, findings* out) {
-  if (out == nullptr) return 1;
+  if (out == nullptr)
+    return 1;
   *out = {nullptr, 0};
   if (len > static_cast<size_t>(INT32_MAX) || (sql == nullptr && len != 0)) {
     return 1;
   }
   std::vector<SyntaxError> errors;
-  if (!CollectSyntaxErrors(absl::string_view(sql, len), errors)) return 1;
-  if (errors.empty()) return 0;
+  if (!CollectSyntaxErrors(absl::string_view(sql, len), errors))
+    return 1;
+  if (errors.empty())
+    return 0;
   out->items = new syntax_error[errors.size()];
   for (size_t i = 0; i < errors.size(); ++i) {
     const std::string& text = errors[i].message;
     char* message = new char[text.size() + 1];
     std::memcpy(message, text.c_str(), text.size() + 1);
-    out->items[i] = {static_cast<uint32_t>(errors[i].start),
-                     static_cast<uint32_t>(errors[i].end), message};
+    out->items[i] = {
+        static_cast<uint32_t>(errors[i].start),
+        static_cast<uint32_t>(errors[i].end),
+        message,
+    };
   }
   out->count = errors.size();
   return 0;
 }
 
 extern "C" void free_findings(findings* out) {
-  if (out == nullptr) return;
-  for (size_t i = 0; i < out->count; ++i) delete[] out->items[i].message;
+  if (out == nullptr)
+    return;
+  for (size_t i = 0; i < out->count; ++i)
+    delete[] out->items[i].message;
   delete[] out->items;
   *out = {nullptr, 0};
 }
@@ -575,8 +596,7 @@ TEST(ParserFfiTest, ReportsEveryTopLevelError) {
 }
 
 TEST(ParserFfiTest, ErrorInsideBlockSkipsWholeBlock) {
-  constexpr absl::string_view sql =
-      "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
+  constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
@@ -587,8 +607,7 @@ TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
   std::vector<SyntaxError> errors = CheckSyntax(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]),
-            std::make_pair(static_cast<int>(sql.size()),
-                           static_cast<int>(sql.size())));
+            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
 }
 
 // Accepted limit: a missing END makes recovery run to EOF.
@@ -607,8 +626,8 @@ TEST(ParserFfiTest, SyntaxErrorsAreSortedAndDisjoint) {
   }
 }
 
-// Each trap is a broken statement (or block) followed by a second broken
-// statement. If the skipper over-skips, the second error ("8") is lost.
+// Each trap is a broken statement (or block) followed by a second broken statement.
+// If the skipper over-skips, the second error ("8") is lost.
 class SkippingTrapTest : public ::testing::TestWithParam<absl::string_view> {};
 
 TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
@@ -620,28 +639,28 @@ TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Traps, SkippingTrapTest,
-    ::testing::Values(
-        "SELECT IF(true, 1, 2) );",
-        "CREATE TABLE IF NOT EXISTS t (x INT64) );",
-        "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
-        "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
-        "SELECT begin FROM t );",
-        "BEGIN TRANSACTION );",
-        "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
-        "BEGIN BEGIN SELECT 1 2; END; END;",
-        "END;",
-        "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
-        "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
-        "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
-        "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; END;",
-        "WHILE true DO SELECT 1 2; END WHILE;",
-        "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
-        "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
-        "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
-        "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
-        "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
-        "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
+    Traps,
+    SkippingTrapTest,
+    ::testing::Values("SELECT IF(true, 1, 2) );",
+                      "CREATE TABLE IF NOT EXISTS t (x INT64) );",
+                      "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
+                      "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
+                      "SELECT begin FROM t );",
+                      "BEGIN TRANSACTION );",
+                      "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
+                      "BEGIN BEGIN SELECT 1 2; END; END;",
+                      "END;",
+                      "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
+                      "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
+                      "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
+                      "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; END;",
+                      "WHILE true DO SELECT 1 2; END WHILE;",
+                      "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
+                      "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
+                      "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
+                      "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
+                      "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
+                      "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -654,10 +673,11 @@ Expected: FAIL. `ReportsEveryTopLevelError`, `SyntaxErrorsAreSortedAndDisjoint` 
 Add before the closing namespace:
 
 ```cpp
-// Scans from `stmt_start` (the start of a top-level script statement) and
-// returns the byte position just after the first ';' that is not inside a
-// BEGIN/IF/LOOP/WHILE/REPEAT/FOR/CASE block and starts at or after
-// `error_offset`. Returns sql.size() if there is none or the tokenizer fails.
+// Scans from `stmt_start` (the start of a top-level script statement).
+// Returns the byte position just after the first ';' that:
+// - is not inside a BEGIN/IF/LOOP/WHILE/REPEAT/FOR/CASE block, and
+// - starts at or after `error_offset`.
+// Returns sql.size() if there is none or the tokenizer fails.
 int SkipStatement(absl::string_view sql, int stmt_start, int error_offset);
 ```
 
@@ -668,7 +688,8 @@ Add `#include <algorithm>` and `#include <vector>`. Inside the anonymous namespa
 ```cpp
 // BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
 bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
-  if (!next.has_value()) return true;
+  if (!next.has_value())
+    return true;
   switch (next->kind) {
     case Token::EOI:
     case Token::SEMICOLON:
@@ -699,25 +720,22 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
     std::optional<TokenWithLocation> next = NextSignificant(tokenizer);
     const Token kind = token->kind;
     const bool at_statement_start =
-        after_boundary && paren_depth == 0 &&
-        (frames.empty() || frames.back() != Frame::kCaseExpr);
+        after_boundary && paren_depth == 0 && (frames.empty() || frames.back() != Frame::kCaseExpr);
     bool opened_block = false;
 
     // A keyword right after END closes (END IF, END CASE, ...); never opens.
     if (prev != Token::KW_END) {
       switch (kind) {
         case Token::KW_BEGIN:
-          // BEGIN is non-reserved: only a block at statement start or as a
-          // procedure body after ')'.
-          if ((at_statement_start || prev == Token::RPAREN) &&
-              !BeginsTransaction(next)) {
+          // BEGIN is non-reserved, so it opens a block only at statement start
+          // or as a procedure body after ')'.
+          if ((at_statement_start || prev == Token::RPAREN) && !BeginsTransaction(next)) {
             frames.push_back(Frame::kBlock);
             opened_block = true;
           }
           break;
         case Token::KW_CASE:
-          frames.push_back(at_statement_start ? Frame::kBlock
-                                              : Frame::kCaseExpr);
+          frames.push_back(at_statement_start ? Frame::kBlock : Frame::kCaseExpr);
           break;
         case Token::KW_IF:
         case Token::KW_LOOP:
@@ -742,12 +760,12 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         paren_depth = std::max(0, paren_depth - 1);
         break;
       case Token::KW_END:
-        if (!frames.empty()) frames.pop_back();
+        if (!frames.empty())
+          frames.pop_back();
         break;
       case Token::SEMICOLON:
         paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
-        if (frames.empty() &&
-            token->location.start().GetByteOffset() >= error_offset) {
+        if (frames.empty() && token->location.start().GetByteOffset() >= error_offset) {
           return token->location.end().GetByteOffset();
         }
         break;
@@ -755,12 +773,10 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         break;
     }
 
-    after_boundary =
-        kind == Token::SEMICOLON || kind == Token::KW_THEN ||
-        kind == Token::KW_ELSE || kind == Token::KW_DO ||
-        kind == Token::COLON ||
-        (opened_block && (kind == Token::KW_BEGIN || kind == Token::KW_LOOP ||
-                          kind == Token::KW_REPEAT));
+    after_boundary = kind == Token::SEMICOLON || kind == Token::KW_THEN || kind == Token::KW_ELSE ||
+                     kind == Token::KW_DO || kind == Token::COLON ||
+                     (opened_block && (kind == Token::KW_BEGIN || kind == Token::KW_LOOP ||
+                                       kind == Token::KW_REPEAT));
     prev = kind;
     token = std::move(next);
   }
@@ -780,7 +796,8 @@ with
 
 ```cpp
     int next = SkipStatement(sql, stmt_start, error_offset);
-    if (next <= stmt_start) next = static_cast<int>(sql.size());  // progress
+    if (next <= stmt_start)
+      next = static_cast<int>(sql.size());  // progress
     location.set_byte_position(next);
     at_end = NothingSignificantFrom(sql, next);
 ```
