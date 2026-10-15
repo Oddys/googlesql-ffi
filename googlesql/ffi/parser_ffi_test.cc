@@ -155,4 +155,81 @@ TEST(ParserFfiTest, FreeIsIdempotent) {
   gsql_diagnostics_free(&out);
 }
 
+TEST(ParserFfiTest, ReportsEveryTopLevelError) {
+  constexpr absl::string_view sql = "SELECT 1 2;\nSELECT 3;\nSELECT 4 5;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 2);
+  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
+  EXPECT_EQ(Range(diags[1]), At(sql, "5"));
+}
+
+TEST(ParserFfiTest, ErrorInsideBlockSkipsWholeBlock) {
+  constexpr absl::string_view sql =
+      "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 1);
+  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
+}
+
+TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
+  constexpr absl::string_view sql = "SELECT 1;\nSELECT 2 +";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 1);
+  EXPECT_EQ(Range(diags[0]),
+            std::make_pair(static_cast<int>(sql.size()),
+                           static_cast<int>(sql.size())));
+}
+
+// Accepted limit: a missing END makes recovery run to EOF.
+TEST(ParserFfiTest, MissingEndReportsOnceAndTerminates) {
+  constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\nSELECT 9 8;";
+  EXPECT_EQ(Parse(sql).size(), 1);
+}
+
+TEST(ParserFfiTest, DiagnosticsAreSortedAndDisjoint) {
+  constexpr absl::string_view sql =
+      "SELECT 1 2;\nIF true THEN SELECT 3 4; END IF;\nSELECT 5;\nSELECT 6 +";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 3);
+  for (size_t i = 1; i < diags.size(); ++i) {
+    EXPECT_LE(diags[i - 1].end, diags[i].start);
+  }
+}
+
+// Each trap is a broken statement (or block) followed by a second broken
+// statement. If the skipper over-skips, the second error ("8") is lost.
+class SkipperTrapTest : public ::testing::TestWithParam<absl::string_view> {};
+
+TEST_P(SkipperTrapTest, SecondErrorIsStillReported) {
+  const std::string sql = std::string(GetParam()) + "\nSELECT 9 8;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 2) << sql;
+  EXPECT_LT(diags[0].start, diags[1].start);
+  EXPECT_EQ(Range(diags[1]), At(sql, "8")) << sql;
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Traps, SkipperTrapTest,
+    ::testing::Values(
+        "SELECT IF(true, 1, 2) );",
+        "CREATE TABLE IF NOT EXISTS t (x INT64) );",
+        "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
+        "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
+        "SELECT begin FROM t );",
+        "BEGIN TRANSACTION );",
+        "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
+        "BEGIN BEGIN SELECT 1 2; END; END;",
+        "END;",
+        "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
+        "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
+        "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
+        "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; END;",
+        "WHILE true DO SELECT 1 2; END WHILE;",
+        "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
+        "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
+        "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
+        "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
+        "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
+        "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
+
 }  // namespace

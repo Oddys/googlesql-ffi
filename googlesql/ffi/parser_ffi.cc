@@ -21,6 +21,7 @@
 namespace {
 
 using ::googlesql::ffi::OnlyTriviaFrom;
+using ::googlesql::ffi::SkipStatement;
 using ::googlesql::ffi::TokenRangeAt;
 
 struct Found {
@@ -69,7 +70,10 @@ bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
     const int error_offset = ErrorOffset(status, translator, stmt_start);
     auto [start, end] = TokenRangeAt(sql, error_offset);
     found.push_back({start, end, std::string(status.message())});
-    break;  // Recovery is added in Task 2.
+    int next = SkipStatement(sql, stmt_start, error_offset);
+    if (next <= stmt_start) next = static_cast<int>(sql.size());  // progress
+    location.set_byte_position(next);
+    at_end = OnlyTriviaFrom(sql, next);
   }
   return true;
 }
