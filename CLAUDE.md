@@ -18,7 +18,7 @@ bazel test //some:test --test_filter='Suite.Case'          # single gtest case
 bazel run //googlesql/tools/execute_query:execute_query -- --web   # interactive parse/analyze/run (see execute_query.md)
 ```
 
-If the Python build step fails with `ModuleNotFoundError: google.protobuf`, `pip install protobuf==<version>` matching the version in `googlesql_deps_step_2.bzl`. A `Dockerfile` / `docker_build.sh` provide a reference Ubuntu build environment.
+Python code generators run on a downloaded Python 3.11 from `rules_python` (no venv). A system `python3` is needed for the `py_binary` launcher stub that starts with `#!/usr/bin/env python3` and then execs the downloaded interpreter. Python protobuf comes from the Bazel `protobuf` module, and other pip packages come from `requirements.txt` (`@pypi`). The README's `pip install protobuf` / `googlesql_deps_step_2.bzl` tip is stale. A `Dockerfile` / `docker_build.sh` provide a reference Ubuntu build environment.
 
 ## File-based tests
 
