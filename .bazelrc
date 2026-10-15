@@ -67,3 +67,6 @@ build --@io_bazel_rules_go//go/config:linkmode=pie
 # Default pom_version for java_export rules when not explicitly specified on the command line
 build --define=pom_version=LOCAL-SNAPSHOT
 
+
+# Needed for cc_static_library (//googlesql/ffi:googlesql_parser_ffi).
+common --experimental_cc_static_library

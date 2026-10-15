@@ -1,4 +1,6 @@
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_static_library.bzl", "cc_static_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
@@ -37,4 +39,51 @@ cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
+)
+
+cc_static_library(
+    name = "googlesql_parser_ffi_core",
+    deps = [":parser_ffi_lib"],
+)
+
+# cc_static_library does not fold in ICU (a rules_foreign_cc target with
+# prebuilt archives), so merge them in to get one self-contained archive.
+genrule(
+    name = "googlesql_parser_ffi",
+    srcs = [
+        ":googlesql_parser_ffi_core",
+        "@icu//:icu",
+    ],
+    outs = ["libgooglesql_parser_ffi.a"],
+    cmd = select({
+        "@platforms//os:macos": "libtool -static -o $@ $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$')",
+        "@platforms//os:linux": "(echo 'CREATE $@'; for f in $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do echo \"ADDLIB $$f\"; done; echo SAVE; echo END) | ar -M",
+    }),
+)
+
+# Wraps the archive the way an external consumer (Zig) sees it: just the .a
+# plus the header, with no Bazel dependency graph.
+cc_import(
+    name = "googlesql_parser_ffi_import",
+    hdrs = ["parser_ffi.h"],
+    static_library = ":googlesql_parser_ffi",
+)
+
+cc_test(
+    name = "link_smoke_test",
+    srcs = ["link_smoke_test.c"],
+    # No default branch: an unsupported OS (Windows) fails here, loudly.
+    linkopts = select({
+        "@platforms//os:macos": [
+            "-lc++",
+            "-framework",
+            "CoreFoundation",
+        ],
+        "@platforms//os:linux": [
+            "-lstdc++",
+            "-lm",
+            "-lpthread",
+        ],
+    }),
+    deps = [":googlesql_parser_ffi_import"],
 )
