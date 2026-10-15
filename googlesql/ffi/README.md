@@ -60,12 +60,4 @@ switch (target.result.os.tag) {
   skips to end of file.
 
 ## Code style
-
-Format with `clang-format -i googlesql/ffi/*.{h,cc,c}`. It picks up
-`googlesql/ffi/.clang-format` (Google base, 100 columns, `if`/`while`/`for` and function
-bodies (including a lone `return`) on their own line, one argument or parameter per line when they don't fit). Add a trailing
-comma to any braced init list that wraps, so clang-format puts one element per line.
-Function-call arguments can't have one (it doesn't compile). Function comments put one idea per line (summary, each return case,
-each guarantee), with a `Returns:` list for several outcomes. Names follow the
-GoogleSQL (Google) convention: `PascalCase` functions and types, `snake_case`
-variables, `kName` constants. The C ABI uses `snake_case`.
+See [CODE_STYLE.md](googlesql/ffi/CODE_STYLE.md)

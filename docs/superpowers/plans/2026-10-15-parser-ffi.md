@@ -22,7 +22,6 @@
 - Build artifact: `bazel build //googlesql/ffi:googlesql_parser_ffi` produces `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a`.
 - Recovery granularity is the top-level script statement (option A). Inner-block recovery is out of scope.
 - Targets: macOS arm64 + x86_64, Linux x86_64 + aarch64. Build natively on each (or `--cpu=darwin_x86_64` from Apple Silicon). Windows is out of scope: GoogleSQL does not build there. No `#ifdef` per OS in the library code.
-- Code style: `googlesql/ffi/.clang-format` (Google base, 100 columns). An `if`/`while`/`for` body and a function body (including a lone `return`) always go on their own line. Arguments and parameters that don't fit on one line go one per line. A braced init list that doesn't fit on one line gets a trailing comma, so clang-format puts one element per line (a trailing comma in a function call doesn't compile). Comments are filled to 100 columns. A multi-sentence function comment puts one idea per line (summary, each return case, each guarantee), using a `Returns:` list when there are several outcomes. Names keep the GoogleSQL (Google) convention.
 - Line endings are a property of the input, not the host: `\n`, `\r\n` and lone `\r` all end a line, as in `ParseLocationTranslator::CalculateLineOffsets`.
 
 ## Review Focus

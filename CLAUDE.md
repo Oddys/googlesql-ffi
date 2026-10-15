@@ -43,3 +43,20 @@ Pipeline: **SQL text → parser → AST (`ASTNode`) → analyzer/resolver → Re
 - `googlesql/compliance/` — compliance framework and function test libs (`functions_testlib_*.cc`) used to validate engines.
 - `googlesql/local_service/` + `java/` — Java API implemented over `local_service.proto`, a service wrapping the C++ library and exposed via gRPC (`local_service_grpc`) or JNI (`local_service_jni`).
 - `docs/` — user-facing SQL language reference (markdown).
+
+## Parser FFI (`googlesql/ffi/`)
+
+Follow code style specified in @googlesql/ffi/README.md
+
+Never align inline comments horizontally unless the formatter can maintain this automatically. I.e.:
+```cpp
+int x;     // short
+int yyyy;  // long
+```
+is ok for c++,
+while
+```sh
+x = 1    # one
+y = 1000 # thousand
+```
+is bad for .sh or .py

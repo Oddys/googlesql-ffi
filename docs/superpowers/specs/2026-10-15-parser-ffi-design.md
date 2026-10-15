@@ -28,10 +28,6 @@ document on each change.
 | Targets | macOS arm64 + x86_64, Linux x86_64 + aarch64; one native build per target. Windows out of scope (GoogleSQL does not build there). |
 | Line endings | `\n`, `\r\n` and lone `\r` all end a line, regardless of host OS (matches `ParseLocationTranslator`). |
 
-## Code style
-
-Code style: `googlesql/ffi/.clang-format` (Google base, 100 columns). An `if`/`while`/`for` body and a function body (including a lone `return`) always go on their own line. Arguments and parameters that don't fit on one line go one per line. A braced init list that doesn't fit on one line gets a trailing comma, so clang-format puts one element per line (a trailing comma in a function call doesn't compile). Comments are filled to 100 columns. A multi-sentence function comment puts one idea per line (summary, each return case, each guarantee), using a `Returns:` list when there are several outcomes. Names keep the GoogleSQL (Google) convention.
-
 ## C API — `googlesql/ffi/parser_ffi.h`
 
 ```c
