@@ -23,6 +23,13 @@ The archive is for the host OS and CPU. Build it once per target:
 Windows is not supported (GoogleSQL does not build there). The Linux link
 flags and the Linux archive merge step are unverified.
 
+Release builds should use `bazel build -c opt //googlesql/ffi:googlesql_parser_ffi`,
+which gives about 66 MB instead of about 800 MB.
+
+On macOS, ICU's objects are built for the host SDK's deployment target, not
+11.0, so linking may warn "built for newer macOS version". Ship the archive
+built on the oldest macOS you support, or expect that warning.
+
 ## Linking from Zig
 
 ```zig

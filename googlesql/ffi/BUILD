@@ -46,6 +46,8 @@ cc_static_library(
     deps = [":parser_ffi_lib"],
 )
 
+# NOTE: the Linux branch is unverified (no Linux machine was available); only
+# the macOS branch has been built and tested.
 # cc_static_library does not fold in ICU (a rules_foreign_cc target with
 # prebuilt archives), so merge them in to get one self-contained archive.
 genrule(
@@ -57,7 +59,7 @@ genrule(
     outs = ["libgooglesql_parser_ffi.a"],
     cmd = select({
         "@platforms//os:macos": "libtool -static -o $@ $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$')",
-        "@platforms//os:linux": "(echo 'CREATE $@'; for f in $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do echo \"ADDLIB $$f\"; done; echo SAVE; echo END) | ar -M",
+        "@platforms//os:linux": "mkdir -p $(@D)/_merge && i=0 && for f in $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do i=$$((i+1)); cp $$f $(@D)/_merge/$$i.a; done && (echo 'CREATE $@'; for g in $(@D)/_merge/*.a; do echo \"ADDLIB $$g\"; done; echo SAVE; echo END) | ar -M",
     }),
 )
 

@@ -196,6 +196,14 @@ TEST(ParserFfiTest, DiagnosticsAreSortedAndDisjoint) {
   }
 }
 
+TEST(ParserFfiTest, UnclosedCaseExprDoesNotFlagValidCode) {
+  constexpr absl::string_view sql =
+      "SELECT CASE WHEN a THEN 1 FROM t;\nWHILE x DO\n  IF y THEN SELECT 1; END IF;\nEND WHILE;\nSELECT 9 8;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 2);
+  EXPECT_EQ(Range(diags[1]), At(sql, "8"));
+}
+
 // Each trap is a broken statement (or block) followed by a second broken
 // statement. If the skipper over-skips, the second error ("8") is lost.
 class SkipperTrapTest : public ::testing::TestWithParam<absl::string_view> {};
@@ -215,6 +223,7 @@ INSTANTIATE_TEST_SUITE_P(
         "CREATE TABLE IF NOT EXISTS t (x INT64) );",
         "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
         "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
+        "SELECT CASE WHEN true THEN 1 FROM t;",
         "SELECT begin FROM t );",
         "BEGIN TRANSACTION );",
         "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",

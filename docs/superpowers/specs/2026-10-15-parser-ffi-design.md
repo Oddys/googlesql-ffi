@@ -133,6 +133,7 @@ which handles `END IF`, `END LOOP`, `END CASE` and so on.
 | `CASE` | push `block` at statement start, otherwise push `case-expr` |
 | `IF`, `LOOP`, `WHILE`, `REPEAT`, `FOR`, at statement start only | push `block` |
 | `END` | pop (no-op when empty) |
+| `;` | pop any trailing `case-expr` frames (a CASE expression cannot contain `;`) |
 | `(` / `)` | parenthesis depth +1 / −1, floored at 0 |
 
 Why these rules:
@@ -145,11 +146,13 @@ Why these rules:
   or identifier rather than `)`. The flag resets at each top-level `;`.
 - `case-expr` frames stop `CASE WHEN c THEN IF(a, b, c) ELSE REPEAT('a', 2) END`
   from opening blocks.
+- `;` closes open `case-expr` frames, so an unclosed `CASE` expression cannot
+  swallow the rest of the script.
 - The statement-start rule excludes the `IF(...)` function, `IF [NOT] EXISTS`,
   `FOR SYSTEM_TIME AS OF` and `FOR UPDATE`.
 - `ELSEIF`, `EXCEPTION`, `WHEN` and `UNTIL` do not change frames.
 
-The skipper stops after the first `;` that has an empty stack and starts at or
+The skipper stops after the first `;` that has an empty stack (after `case-expr` frames are popped) and starts at or
 after `error_offset`.
 
 A third helper reports whether only whitespace and comments remain:

@@ -87,19 +87,24 @@ extern "C" int gsql_parse_script(const char* sql, size_t len,
   if (len > static_cast<size_t>(INT32_MAX) || (sql == nullptr && len != 0)) {
     return 1;
   }
-  std::vector<Found> found;
-  if (!CollectDiagnostics(absl::string_view(sql, len), found)) return 1;
-  if (found.empty()) return 0;
-  out->items = new gsql_diagnostic[found.size()];
-  for (size_t i = 0; i < found.size(); ++i) {
-    const std::string& text = found[i].message;
-    char* message = new char[text.size() + 1];
-    std::memcpy(message, text.c_str(), text.size() + 1);
-    out->items[i] = {static_cast<uint32_t>(found[i].start),
-                     static_cast<uint32_t>(found[i].end), message};
+  try {
+    std::vector<Found> found;
+    if (!CollectDiagnostics(absl::string_view(sql, len), found)) return 1;
+    if (found.empty()) return 0;
+    out->items = new gsql_diagnostic[found.size()]();  // zeroed
+    for (size_t i = 0; i < found.size(); ++i) {
+      const std::string& text = found[i].message;
+      char* message = new char[text.size() + 1];
+      std::memcpy(message, text.c_str(), text.size() + 1);
+      out->items[i] = {static_cast<uint32_t>(found[i].start),
+                       static_cast<uint32_t>(found[i].end), message};
+      out->count = i + 1;  // free only ever touches filled items
+    }
+    return 0;
+  } catch (...) {
+    gsql_diagnostics_free(out);
+    return 1;
   }
-  out->count = found.size();
-  return 0;
 }
 
 extern "C" void gsql_diagnostics_free(gsql_diagnostics* out) {

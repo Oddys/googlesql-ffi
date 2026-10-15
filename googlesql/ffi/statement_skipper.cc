@@ -136,6 +136,10 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         create_first = true;
         in_create = proc_seen = false;
         paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
+        // A CASE expression cannot contain ';', so any open one is unclosed.
+        while (!frames.empty() && frames.back() == Frame::kCaseExpr) {
+          frames.pop_back();
+        }
         if (frames.empty() &&
             token->location.start().GetByteOffset() >= error_offset) {
           return token->location.end().GetByteOffset();
