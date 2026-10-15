@@ -25,6 +25,8 @@ document on each change.
 | Positions | Byte offsets only, half-open `[start, end)` into the caller's UTF-8 buffer. The Zig side converts to LSP positions. |
 | Range | The offending token. Zero-width `[len, len)` at end of input. |
 | Packaging | `cc_static_library` (Bazel 7.4+, `--experimental_cc_static_library`) producing one self-contained `.a`. |
+| Targets | macOS arm64 + x86_64, Linux x86_64 + aarch64; one native build per target. Windows out of scope (GoogleSQL does not build there). |
+| Line endings | `\n`, `\r\n` and lone `\r` all end a line, regardless of host OS (matches `ParseLocationTranslator`). |
 
 ## C API — `googlesql/ffi/parser_ffi.h`
 
@@ -200,8 +202,10 @@ The deliverables are `libgooglesql_parser_ffi.a` and `parser_ffi.h`. The
 ```zig
 exe.addIncludePath(.{ .cwd_relative = "<googlesql>/googlesql/ffi" });
 exe.addObjectFile(.{ .cwd_relative = "<googlesql>/bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a" });
-exe.linkSystemLibrary("c++");          // NOT exe.linkLibCpp(): must match the archive's libc++
-exe.linkFramework("CoreFoundation");   // macOS; final list confirmed during implementation
+// NOT exe.linkLibCpp(): must match the archive's C++ runtime.
+// macOS: linkSystemLibrary("c++") + linkFramework("CoreFoundation").
+// Linux: linkSystemLibrary("stdc++"), "m", "pthread".
+// Final lists confirmed during implementation.
 ```
 
 Ship this snippet with the final framework list in a short

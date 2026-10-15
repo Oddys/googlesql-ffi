@@ -21,6 +21,8 @@
 - Diagnostics are sorted by `start` and never overlap. A diagnostic never touches a statement that parsed OK.
 - Build artifact: `bazel build //googlesql/ffi:googlesql_parser_ffi` produces `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a`.
 - Recovery granularity is the top-level script statement (option A). Inner-block recovery is out of scope.
+- Targets: macOS arm64 + x86_64, Linux x86_64 + aarch64. Build natively on each (or `--cpu=darwin_x86_64` from Apple Silicon). Windows is out of scope: GoogleSQL does not build there. No `#ifdef` per OS in the library code.
+- Line endings are a property of the input, not the host: `\n`, `\r\n` and lone `\r` all end a line, as in `ParseLocationTranslator::CalculateLineOffsets`.
 
 ## Review Focus
 
@@ -206,6 +208,13 @@ TEST(ParserFfiTest, ErrorAfterCrlf) {
   EXPECT_EQ(Range(diags[0]), At(sql, "4"));
 }
 
+TEST(ParserFfiTest, ErrorAfterLoneCr) {
+  constexpr absl::string_view sql = "SELECT 1;\rSELECT 3 4;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 1);
+  EXPECT_EQ(Range(diags[0]), At(sql, "4"));
+}
+
 TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   constexpr absl::string_view sql = "SELECT 1 +";
   std::vector<Diag> diags = Parse(sql);
@@ -217,6 +226,13 @@ TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
   constexpr absl::string_view sql = "SELECT 'abc\nSELECT 2;";
+  std::vector<Diag> diags = Parse(sql);
+  ASSERT_EQ(diags.size(), 1);
+  EXPECT_EQ(Range(diags[0]), At(sql, "'abc"));
+}
+
+TEST(ParserFfiTest, UnterminatedStringRangeStopsBeforeCrlf) {
+  constexpr absl::string_view sql = "SELECT 'abc\r\nSELECT 2;";
   std::vector<Diag> diags = Parse(sql);
   ASSERT_EQ(diags.size(), 1);
   EXPECT_EQ(Range(diags[0]), At(sql, "'abc"));
@@ -384,6 +400,7 @@ std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, offset);
   std::optional<TokenWithLocation> token = NextSignificant(tokenizer);
   if (!token.has_value()) {
+    // Any of \n, \r\n, \r ends the line (same as ParseLocationTranslator).
     size_t eol = sql.find_first_of("\r\n", offset);
     if (eol == absl::string_view::npos) eol = sql.size();
     return {offset, static_cast<int>(eol)};
@@ -518,7 +535,7 @@ extern "C" void gsql_diagnostics_free(gsql_diagnostics* out) {
 - [ ] **Step 8: Run the tests**
 
 Run: `bazel test //googlesql/ffi:parser_ffi_test --test_output=errors`
-Expected: PASS, all 9 tests.
+Expected: PASS, all 11 tests.
 
 If a test fails, handle it this way:
 - **`CleanInputsHaveNoDiagnostics`:** find the rejected line by running it through `bazel run //googlesql/tools/execute_query:execute_query -- --mode=parse '<sql>'` with all language features enabled (see `--help`). If GoogleSQL itself rejects it, remove that line from `kCleanScript` and say so in the commit message. Do not loosen the implementation.
@@ -845,13 +862,14 @@ cc_import(
 cc_test(
     name = "link_smoke_test",
     srcs = ["link_smoke_test.c"],
+    # No default branch: an unsupported OS (Windows) fails here, loudly.
     linkopts = select({
         "@platforms//os:macos": [
             "-lc++",
             "-framework",
             "CoreFoundation",
         ],
-        "//conditions:default": [
+        "@platforms//os:linux": [
             "-lstdc++",
             "-lm",
             "-lpthread",
@@ -904,6 +922,16 @@ bazel build //googlesql/ffi:googlesql_parser_ffi
 Artifacts: `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a` and
 `googlesql/ffi/parser_ffi.h`.
 
+The archive is for the host OS and CPU. Build it once per target:
+
+| Target | How |
+|---|---|
+| macOS arm64 | native build on Apple Silicon |
+| macOS x86_64 | native on Intel, or `--cpu=darwin_x86_64` on Apple Silicon |
+| Linux x86_64 / aarch64 | native build on that machine (or a container of that arch) |
+
+Windows is not supported (GoogleSQL does not build there).
+
 ## Linking from Zig
 
 ```zig
@@ -911,8 +939,18 @@ exe.addIncludePath(.{ .cwd_relative = "<googlesql>/googlesql/ffi" });
 exe.addObjectFile(.{ .cwd_relative = "<googlesql>/bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a" });
 // The archive is built against the system C++ runtime. Do NOT use
 // exe.linkLibCpp() (Zig's bundled libc++); the two runtimes conflict.
-exe.linkSystemLibrary("c++");          // Linux: "stdc++"
-exe.linkFramework("CoreFoundation");   // macOS only
+switch (target.result.os.tag) {
+    .macos => {
+        exe.linkSystemLibrary("c++");
+        exe.linkFramework("CoreFoundation");
+    },
+    .linux => {
+        exe.linkSystemLibrary("stdc++");
+        exe.linkSystemLibrary("m");
+        exe.linkSystemLibrary("pthread");
+    },
+    else => @panic("googlesql_parser_ffi: unsupported OS"),
+}
 ```
 
 ## Semantics
