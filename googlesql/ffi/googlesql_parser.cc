@@ -142,14 +142,12 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
   Token previous_token = Token::UNAVAILABLE;
 
   while (true) {
-    // TODO Understand
-    // A token's error is raised only once it is current, as in the lookahead transformer,
-    // so text after the closing `;` that cannot be tokenized does not fail the skip.
     if (!next_token.ok()) {
       result.status = next_token.status();
       return result;
     }
 
+    // Gets the reference to TokenWithLocation inside StatusOr and copies its value to token
     const TokenWithLocation token = *next_token;
     if (token.kind == Token::EOI) {
       result.are_all_blocks_closed = open_blocks.empty();
@@ -160,9 +158,8 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
       return result;
     }
     next_token = NextNonCommentToken(tokenizer);
-    const Token ahead = next_token.ok() ? next_token->kind : Token::UNAVAILABLE;
-    // TODO Understand
-    // A keyword after `.`, `@` or `@@` is a name, as the lookahead transformer has it.
+    const Token lookahead_token = next_token.ok() ? next_token->kind : Token::UNAVAILABLE;
+    // A keyword after `.`, `@` or `@@` is an identifier.
     Token kind = token.kind;
     if ((previous_token == Token::DOT || previous_token == Token::ATSIGN ||
          previous_token == Token::KW_DOUBLE_AT) &&
@@ -174,7 +171,7 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
     // A label, as in `label: BEGIN`. Checked before keywords, as the lookahead transformer
     // does, since a non-reserved keyword such as LOOP can be a label. `e` and `e1` come from
     // the tokenizer as exponent tokens, which the transformer accepts as names too.
-    if (was_statement_start && ahead == Token::COLON &&
+    if (was_statement_start && lookahead_token == Token::COLON &&
         (kind == Token::IDENTIFIER || kind == Token::EXP_IN_FLOAT_NO_SIGN ||
          kind == Token::STANDALONE_EXPONENT_SIGN || IsKeyword(kind))) {
       previous_token = Token::COLON;
@@ -194,7 +191,7 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
             (result.skip_end < 0 && token.location.start().GetByteOffset() >= error_byte)) {
           result.skip_end = token.location.end().GetByteOffset();
           // Comments after the `;` are already eaten by NextNonCommentToken.
-          result.should_skip_to_end_of_input = ahead == Token::EOI;
+          result.should_skip_to_end_of_input = lookahead_token == Token::EOI;
           // Closed, or known never to: nothing left to scan for.
           if (result.are_all_blocks_closed || is_unclosed) return result;
         }
@@ -214,9 +211,10 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
       case Token::KW_END:
         if (!open_blocks.empty()) open_blocks.pop_back();
         // END IF, END WHILE, etc. are one closer.
-        if (ahead == Token::KW_IF || ahead == Token::KW_WHILE || ahead == Token::KW_LOOP ||
-            ahead == Token::KW_REPEAT || ahead == Token::KW_FOR || ahead == Token::KW_CASE) {
-          previous_token = ahead;
+        if (lookahead_token == Token::KW_IF || lookahead_token == Token::KW_WHILE ||
+            lookahead_token == Token::KW_LOOP || lookahead_token == Token::KW_REPEAT ||
+            lookahead_token == Token::KW_FOR || lookahead_token == Token::KW_CASE) {
+          previous_token = lookahead_token;
           next_token = NextNonCommentToken(tokenizer);
         }
         break;
@@ -235,9 +233,10 @@ SkipStatus AdvanceParser(const googlesql::ParseResumeLocation& resume,
         break;
       case Token::KW_BEGIN:
         // At a statement start, BEGIN followed by these is a transaction (begin_statement).
-        if (is_procedure || (was_statement_start && ahead != Token::SEMICOLON &&
-                             ahead != Token::EOI && ahead != Token::KW_TRANSACTION &&
-                             ahead != Token::KW_READ && ahead != Token::KW_ISOLATION)) {
+        if (is_procedure ||
+            (was_statement_start && lookahead_token != Token::SEMICOLON &&
+             lookahead_token != Token::EOI && lookahead_token != Token::KW_TRANSACTION &&
+             lookahead_token != Token::KW_READ && lookahead_token != Token::KW_ISOLATION)) {
           is_procedure = false;
           open_blocks.push_back(true);
           is_statement_start = true;
@@ -291,17 +290,18 @@ absl::Status SkipNextStatement(googlesql::ParseResumeLocation* resume,
                                int error_byte,
                                bool* at_end_of_input,
                                absl::flat_hash_set<int>* not_closed_starts) {
-  GOOGLESQL_RETURN_IF_ERROR(resume->Validate());  // TODO What does it do?
+  GOOGLESQL_RETURN_IF_ERROR(resume->Validate());
   const int statement_start = resume->byte_position();
-  if (error_byte < 0) error_byte = statement_start;  // TODO When is that possible?
+  // The caller failed to obtain the error byte before passing in here
+  if (error_byte < 0) error_byte = statement_start;
   const bool is_unclosed = not_closed_starts->contains(statement_start);
 
   const SkipStatus result = AdvanceParser(*resume, error_byte, is_unclosed);
   // Text that cannot be tokenized after `skip_end` is left for the parser to report
   if (!result.status.ok() && result.skip_end < 0) return result.status;
 
-  // TODO Difficult to understand
-  // A scan cut short at `skip_end` saw too few boundaries to judge them.
+  // Cache: prevents re-parsing the whole unclosed block on each statement
+  // that ends with `;` inside it
   if (!result.are_all_blocks_closed && !is_unclosed) {
     size_t fewest_after = result.open_blocks_at_end_of_input;
     for (auto it = result.open_blocks_at_statement_starts.rbegin();
