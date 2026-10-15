@@ -129,7 +129,7 @@ which handles `END IF`, `END LOOP`, `END CASE` and so on.
 
 | Token | Effect |
 |---|---|
-| `BEGIN`, if at statement start or right after `)`, and the next token is not `TRANSACTION`, `ISOLATION`, `READ`, `;` or EOI | push `block` |
+| `BEGIN`, if at statement start, right after `)`, or the first paren-depth-0 `BEGIN` after `PROCEDURE` in a top-level `CREATE` statement, and the next token is not `TRANSACTION`, `ISOLATION`, `READ`, `;` or EOI | push `block` |
 | `CASE` | push `block` at statement start, otherwise push `case-expr` |
 | `IF`, `LOOP`, `WHILE`, `REPEAT`, `FOR`, at statement start only | push `block` |
 | `END` | pop (no-op when empty) |
@@ -140,6 +140,9 @@ Why these rules:
 - `BEGIN` is a non-reserved keyword, so `SELECT begin FROM t` must not open a
   block.
 - The "right after `)`" case covers `CREATE PROCEDURE p() [OPTIONS(...)] BEGIN`.
+- The "after `PROCEDURE`" case covers `CREATE PROCEDURE p() EXTERNAL SECURITY
+  {INVOKER|DEFINER} [WITH CONNECTION c] BEGIN`, where `BEGIN` follows a keyword
+  or identifier rather than `)`. The flag resets at each top-level `;`.
 - `case-expr` frames stop `CASE WHEN c THEN IF(a, b, c) ELSE REPEAT('a', 2) END`
   from opening blocks.
 - The statement-start rule excludes the `IF(...)` function, `IF [NOT] EXISTS`,

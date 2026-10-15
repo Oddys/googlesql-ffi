@@ -72,6 +72,8 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
   // True when the previous token lets a new statement begin here.
   bool after_boundary = true;
   Token prev = Token::EOI;  // EOI stands for "no previous token".
+  // Top-level CREATE ... PROCEDURE seen; its first depth-0 BEGIN is the body.
+  bool create_first = true, in_create = false, proc_seen = false;
 
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, stmt_start);
   std::optional<TokenWithLocation> token = NextSignificant(tokenizer);
@@ -89,10 +91,12 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         case Token::KW_BEGIN:
           // BEGIN is non-reserved: only a block at statement start or as a
           // procedure body after ')'.
-          if ((at_statement_start || prev == Token::RPAREN) &&
+          if ((at_statement_start || prev == Token::RPAREN ||
+               (proc_seen && paren_depth == 0)) &&
               !BeginsTransaction(next)) {
             frames.push_back(Frame::kBlock);
             opened_block = true;
+            proc_seen = false;
           }
           break;
         case Token::KW_CASE:
@@ -114,6 +118,10 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
       }
     }
 
+    if (frames.empty() && create_first) in_create = kind == Token::KW_CREATE;
+    create_first = false;
+    if (in_create && kind == Token::KW_PROCEDURE) proc_seen = true;
+
     switch (kind) {
       case Token::LPAREN:
         ++paren_depth;
@@ -125,6 +133,8 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         if (!frames.empty()) frames.pop_back();
         break;
       case Token::SEMICOLON:
+        create_first = true;
+        in_create = proc_seen = false;
         paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
         if (frames.empty() &&
             token->location.start().GetByteOffset() >= error_offset) {
