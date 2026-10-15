@@ -91,8 +91,8 @@ while not at_end:
 external `ErrorLocation` (1-based line/column, tabs expand to 8 columns;
 `parser.cc` → `ConvertInternalErrorLocationAndAdjustErrorString`). Map it back
 with `ParseLocationTranslator::GetByteOffsetFromLineAndColumn`. If the error
-carries no location, use `E = S`. Verify during implementation that line and
-column are relative to the whole input, not to `S`.
+carries no location, use `E = S`. Line and column are relative to the whole
+input (`parser.cc` converts against `resume_location->input()`).
 
 **Progress guarantee.** `SkipStatement` returns a position past at least one
 `;` that comes after `S`, or `len`. The loop always advances.
@@ -114,21 +114,45 @@ Both use `parser::GoogleSqlTokenizer` (as `SkipNextStatement` does in
 `public/parse_helpers.cc`). Comments are skipped. Semicolons inside strings and
 comments are therefore ignored.
 
-Depth rules:
+The skipper keeps a stack of open frames (`block` or `case-expr`) and a
+parenthesis depth. A token is at **statement start** when all of these hold:
+
+- the previous significant token is absent, or is `;`, `THEN`, `ELSE`, `DO`,
+  the `:` after a label, or a `BEGIN`/`LOOP`/`REPEAT` that just opened a block;
+- the parenthesis depth is 0;
+- the innermost frame is not `case-expr`.
+
+Frame rules. A keyword that immediately follows `END` never opens a frame,
+which handles `END IF`, `END LOOP`, `END CASE` and so on.
 
 | Token | Effect |
 |---|---|
-| `BEGIN`, unless the next token is `TRANSACTION`, `ISOLATION`, `;` or EOI | +1 |
-| `CASE` (expression and statement forms both close with `END`) | +1 |
-| `IF`, `LOOP`, `WHILE`, `REPEAT`, `FOR`, **at statement start only** | +1 |
-| `END`, also consuming a following `IF`/`LOOP`/`WHILE`/`REPEAT`/`FOR`/`CASE` | −1, floored at 0 |
+| `BEGIN`, if at statement start or right after `)`, and the next token is not `TRANSACTION`, `ISOLATION`, `READ`, `;` or EOI | push `block` |
+| `CASE` | push `block` at statement start, otherwise push `case-expr` |
+| `IF`, `LOOP`, `WHILE`, `REPEAT`, `FOR`, at statement start only | push `block` |
+| `END` | pop (no-op when empty) |
+| `(` / `)` | parenthesis depth +1 / −1, floored at 0 |
 
-A token is at **statement start** when the previous significant token is
-absent, or is one of `;`, `BEGIN`, `THEN`, `ELSE`, `DO`, `LOOP`, `REPEAT`, or
-the `:` after a label. This excludes the `IF(a, b, c)` function,
-`IF [NOT] EXISTS`, `FOR SYSTEM_TIME AS OF` and `FOR UPDATE`. `BEGIN` is counted
-regardless of position because `CREATE PROCEDURE ... BEGIN` does not start a
-statement. `ELSEIF`, `EXCEPTION`, `WHEN`, `UNTIL` and `DO` do not change depth.
+Why these rules:
+
+- `BEGIN` is a non-reserved keyword, so `SELECT begin FROM t` must not open a
+  block.
+- The "right after `)`" case covers `CREATE PROCEDURE p() [OPTIONS(...)] BEGIN`.
+- `case-expr` frames stop `CASE WHEN c THEN IF(a, b, c) ELSE REPEAT('a', 2) END`
+  from opening blocks.
+- The statement-start rule excludes the `IF(...)` function, `IF [NOT] EXISTS`,
+  `FOR SYSTEM_TIME AS OF` and `FOR UPDATE`.
+- `ELSEIF`, `EXCEPTION`, `WHEN` and `UNTIL` do not change frames.
+
+The skipper stops after the first `;` that has an empty stack and starts at or
+after `error_offset`.
+
+A third helper reports whether only whitespace and comments remain:
+
+```cpp
+// True if only whitespace/comments remain from `offset`. False on tokenizer error.
+bool OnlyTriviaFrom(absl::string_view sql, int offset);
+```
 
 Known limits (accepted for option A):
 
