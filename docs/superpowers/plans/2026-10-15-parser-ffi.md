@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a self-contained static library with a C ABI that returns every syntax error in a BigQuery script as byte-range diagnostics, for a Zig LSP server.
+**Goal:** Build a self-contained static library with a C ABI that returns every syntax error in a BigQuery script as a byte range and an error message, for a Zig LSP server.
 
-**Architecture:** The C entry point `gsql_parse_script` loops over `ParseNextScriptStatement`. On a syntax error it records the offending token's byte range, then skips to the end of the enclosing top-level statement with a block-aware token scanner (`statement_skipper`), and resumes. `cc_static_library` merges every transitive dependency into a single `.a`.
+**Architecture:** The C entry point `check_syntax` loops over `ParseNextScriptStatement`. On a syntax error it records the offending token's byte range, then skips to the end of the enclosing top-level statement with a block-aware token scanner (`helpers`), and resumes. `cc_static_library` merges every transitive dependency into a single `.a`.
 
 **Tech Stack:** C++20, Bazel 7.6.1 (bzlmod), rules_cc 0.2.14, GoogleSQL parser and tokenizer, gtest.
 
@@ -16,9 +16,9 @@
 - Positions are byte offsets in a half-open range `[start, end)` into the caller's buffer. Never line/col.
 - Language options: `EnableMaximumLanguageFeatures()` + `SetSupportsAllStatementKinds()`, hard-coded. Not configurable.
 - Error messages are produced with `ERROR_MESSAGE_WITH_PAYLOAD` and carry no `[at l:c]` suffix.
-- `gsql_parse_script` returns non-zero only on internal failure, `len > INT32_MAX`, `out == NULL`, or `sql == NULL && len != 0`. On non-zero, `*out` is `{NULL, 0}` whenever `out != NULL`.
+- `check_syntax` returns non-zero only on internal failure, `len > INT32_MAX`, `out == NULL`, or `sql == NULL && len != 0`. On non-zero, `*out` is `{NULL, 0}` whenever `out != NULL`.
 - No global state. Every call is independent.
-- Diagnostics are sorted by `start` and never overlap. A diagnostic never touches a statement that parsed OK.
+- Syntax errors are sorted by `start` and never overlap. A syntax error never touches a statement that parsed OK.
 - Build artifact: `bazel build //googlesql/ffi:googlesql_parser_ffi` produces `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a`.
 - Recovery granularity is the top-level script statement (option A). Inner-block recovery is out of scope.
 - Targets: macOS arm64 + x86_64, Linux x86_64 + aarch64. Build natively on each (or `--cpu=darwin_x86_64` from Apple Silicon). Windows is out of scope: GoogleSQL does not build there. No `#ifdef` per OS in the library code.
@@ -30,7 +30,7 @@
 2. Inside an expression `CASE`, a `THEN IF(...)` or `ELSE REPEAT(...)` must not look like the start of a statement. Pinned in Task 2 traps.
 3. CRLF line endings before an error. The line:col → byte mapping must still land on the exact token. Pinned in Task 1.
 4. An error in the last statement with no trailing `;`, after valid statements, gives a zero-width range at EOF and the loop terminates. Pinned in Task 2.
-5. A missing `END` (an accepted limit) must give exactly one diagnostic and terminate, with no hang and no spurious diagnostics. Pinned in Task 2.
+5. A missing `END` (an accepted limit) must give exactly one syntax error and terminate, with no hang and no spurious syntax errors. Pinned in Task 2.
 
 ## File Structure
 
@@ -38,7 +38,7 @@
 |---|---|
 | `googlesql/ffi/parser_ffi.h` | Public C API (create) |
 | `googlesql/ffi/parser_ffi.cc` | Parser options, recovery loop, C marshalling (create) |
-| `googlesql/ffi/statement_skipper.h/.cc` | Token-level helpers: `TokenRangeAt`, `OnlyTriviaFrom`, `SkipStatement` (create) |
+| `googlesql/ffi/helpers.h/.cc` | Helpers: `TokenRangeAt`, `NothingSignificantFrom`, `SkipStatement` (create) |
 | `googlesql/ffi/parser_ffi_test.cc` | gtest through the C API only (create) |
 | `googlesql/ffi/link_smoke_test.c` | Pure-C program linked against the `.a` only (create, Task 3) |
 | `googlesql/ffi/BUILD` | Targets (create) |
@@ -49,18 +49,18 @@
 
 ### Task 1: C API, first-error reporting, token ranges
 
-Delivers a working `gsql_parse_script` that reports **at most the first** error, with exact token ranges. Recovery comes in Task 2.
+Delivers a working `check_syntax` that reports **at most the first** error, with exact token ranges. Recovery comes in Task 2.
 
 **Files:**
-- Create: `googlesql/ffi/parser_ffi.h`, `googlesql/ffi/parser_ffi.cc`, `googlesql/ffi/statement_skipper.h`, `googlesql/ffi/statement_skipper.cc`, `googlesql/ffi/BUILD`
+- Create: `googlesql/ffi/parser_ffi.h`, `googlesql/ffi/parser_ffi.cc`, `googlesql/ffi/helpers.h`, `googlesql/ffi/helpers.cc`, `googlesql/ffi/BUILD`
 - Test: `googlesql/ffi/parser_ffi_test.cc`
 
 **Interfaces:**
-- Produces (C): `gsql_diagnostic`, `gsql_diagnostics`, `int gsql_parse_script(const char*, size_t, gsql_diagnostics*)`, `void gsql_diagnostics_free(gsql_diagnostics*)`.
-- Produces (C++, namespace `googlesql::ffi`, header `googlesql/ffi/statement_skipper.h`):
+- Produces (C): `syntax_error`, `findings`, `int check_syntax(const char*, size_t, findings*)`, `void free_findings(findings*)`.
+- Produces (C++, namespace `googlesql::ffi`, header `googlesql/ffi/helpers.h`):
   - `std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset);`
-  - `bool OnlyTriviaFrom(absl::string_view sql, int offset);`
-- Produces (in `parser_ffi.cc`, anonymous namespace): `bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found)`, where `struct Found { int start; int end; std::string message; };`. Task 2 edits its loop body.
+  - `bool NothingSignificantFrom(absl::string_view sql, int offset);`
+- Produces (in `parser_ffi.cc`, anonymous namespace): `bool CollectSyntaxErrors(absl::string_view sql, std::vector<SyntaxError>& errors)`, where `struct SyntaxError { int start; int end; std::string message; };`. Task 2 edits its loop body.
 
 - [ ] **Step 1: Write the header**
 
@@ -81,23 +81,23 @@ typedef struct {
   uint32_t start;       // byte offset, inclusive
   uint32_t end;         // byte offset, exclusive (== start at EOF)
   const char* message;  // NUL-terminated UTF-8, no location suffix
-} gsql_diagnostic;
+} syntax_error;
 
 typedef struct {
-  gsql_diagnostic* items;  // owned by the library
+  syntax_error* items;  // owned by the library
   size_t count;
-} gsql_diagnostics;
+} findings;
 
-// Parses sql[0..len) as a BigQuery script; sql need not be NUL-terminated.
+// Checks GoogleSQL syntax in sql[0..len); sql need not be NUL-terminated.
 // Returns 0 and fills *out (count == 0 means the input is clean).
 // Returns non-zero only on internal failure, len > INT32_MAX, out == NULL,
 // or sql == NULL with len != 0; *out is then {NULL, 0} (if out != NULL).
-// Diagnostics are sorted by start and never overlap. Thread-safe.
-int gsql_parse_script(const char* sql, size_t len, gsql_diagnostics* out);
+// Syntax errors are sorted by start and never overlap. Thread-safe.
+int check_syntax(const char* sql, size_t len, findings* out);
 
-// Frees everything gsql_parse_script allocated in *out and resets it to
+// Frees everything check_syntax allocated in *out and resets it to
 // {NULL, 0}. Safe on an empty result and on NULL.
-void gsql_diagnostics_free(gsql_diagnostics* out);
+void free_findings(findings* out);
 
 #ifdef __cplusplus
 }  // extern "C"
@@ -123,22 +123,22 @@ void gsql_diagnostics_free(gsql_diagnostics* out);
 
 namespace {
 
-struct Diag {
+struct SyntaxError {
   int start;
   int end;
   std::string message;
 };
 
-std::vector<Diag> Parse(absl::string_view sql) {
-  gsql_diagnostics out;
-  EXPECT_EQ(gsql_parse_script(sql.data(), sql.size(), &out), 0);
-  std::vector<Diag> result;
+std::vector<SyntaxError> CheckSyntax(absl::string_view sql) {
+  findings out;
+  EXPECT_EQ(check_syntax(sql.data(), sql.size(), &out), 0);
+  std::vector<SyntaxError> result;
   for (size_t i = 0; i < out.count; ++i) {
     result.push_back({static_cast<int>(out.items[i].start),
                       static_cast<int>(out.items[i].end),
                       out.items[i].message});
   }
-  gsql_diagnostics_free(&out);
+  free_findings(&out);
   return result;
 }
 
@@ -153,7 +153,7 @@ std::pair<int, int> At(absl::string_view sql, absl::string_view needle,
   return {static_cast<int>(pos), static_cast<int>(pos + needle.size())};
 }
 
-std::pair<int, int> Range(const Diag& d) { return {d.start, d.end}; }
+std::pair<int, int> Range(const SyntaxError& e) { return {e.start, e.end}; }
 
 constexpr absl::string_view kCleanScript = R"sql(
 -- leading comment
@@ -175,97 +175,97 @@ BEGIN TRANSACTION; COMMIT TRANSACTION;
 FROM t |> WHERE true |> SELECT *;
 )sql";
 
-TEST(ParserFfiTest, CleanInputsHaveNoDiagnostics) {
+TEST(ParserFfiTest, CleanInputsHaveNoSyntaxErrors) {
   for (absl::string_view sql :
        {absl::string_view(""), absl::string_view("  \n\t"),
         absl::string_view("-- only a comment\n/* and another */"),
         absl::string_view("SELECT 1"),
         absl::string_view("SELECT 1;\nSELECT 2;"), kCleanScript}) {
-    EXPECT_TRUE(Parse(sql).empty()) << sql;
+    EXPECT_TRUE(CheckSyntax(sql).empty()) << sql;
   }
 }
 
 TEST(ParserFfiTest, ErrorRangeIsOffendingToken) {
   constexpr absl::string_view sql = "SELECT 1 2;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
-  EXPECT_TRUE(absl::StartsWith(diags[0].message, "Syntax error")) << diags[0].message;
-  EXPECT_FALSE(absl::StrContains(diags[0].message, "[at ")) << diags[0].message;
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "2"));
+  EXPECT_TRUE(absl::StartsWith(errors[0].message, "Syntax error")) << errors[0].message;
+  EXPECT_FALSE(absl::StrContains(errors[0].message, "[at ")) << errors[0].message;
 }
 
 TEST(ParserFfiTest, ErrorAfterMultibyteAndTabs) {
   constexpr absl::string_view sql = "SELECT 'äö',\t'ü';\n\tSELECT 1 2;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "2"));
 }
 
 TEST(ParserFfiTest, ErrorAfterCrlf) {
   constexpr absl::string_view sql = "SELECT 1;\r\nSELECT 3 4;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "4"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "4"));
 }
 
 TEST(ParserFfiTest, ErrorAfterLoneCr) {
   constexpr absl::string_view sql = "SELECT 1;\rSELECT 3 4;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "4"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "4"));
 }
 
 TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   constexpr absl::string_view sql = "SELECT 1 +";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]),
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]),
             std::make_pair(static_cast<int>(sql.size()),
                            static_cast<int>(sql.size())));
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
   constexpr absl::string_view sql = "SELECT 'abc\nSELECT 2;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "'abc"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "'abc"));
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeStopsBeforeCrlf) {
   constexpr absl::string_view sql = "SELECT 'abc\r\nSELECT 2;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "'abc"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "'abc"));
 }
 
 TEST(ParserFfiTest, InputNeedNotBeNulTerminated) {
   const std::string buffer = "SELECT 1;garbage(";
-  gsql_diagnostics out;
-  ASSERT_EQ(gsql_parse_script(buffer.data(), 9, &out), 0);  // "SELECT 1;"
+  findings out;
+  ASSERT_EQ(check_syntax(buffer.data(), 9, &out), 0);  // "SELECT 1;"
   EXPECT_EQ(out.count, 0);
-  gsql_diagnostics_free(&out);
+  free_findings(&out);
 }
 
 TEST(ParserFfiTest, NullAndEmptyInputs) {
-  gsql_diagnostics out;
-  ASSERT_EQ(gsql_parse_script(nullptr, 0, &out), 0);
+  findings out;
+  ASSERT_EQ(check_syntax(nullptr, 0, &out), 0);
   EXPECT_EQ(out.count, 0);
   EXPECT_EQ(out.items, nullptr);
-  EXPECT_NE(gsql_parse_script(nullptr, 5, &out), 0);
+  EXPECT_NE(check_syntax(nullptr, 5, &out), 0);
   EXPECT_EQ(out.count, 0);
-  EXPECT_NE(gsql_parse_script("SELECT 1", 8, nullptr), 0);
+  EXPECT_NE(check_syntax("SELECT 1", 8, nullptr), 0);
 }
 
 TEST(ParserFfiTest, FreeIsIdempotent) {
-  gsql_diagnostics out = {nullptr, 0};
-  gsql_diagnostics_free(&out);
-  gsql_diagnostics_free(&out);
-  gsql_diagnostics_free(nullptr);
-  ASSERT_EQ(gsql_parse_script("SELECT 1 2", 10, &out), 0);
-  gsql_diagnostics_free(&out);
+  findings out = {nullptr, 0};
+  free_findings(&out);
+  free_findings(&out);
+  free_findings(nullptr);
+  ASSERT_EQ(check_syntax("SELECT 1 2", 10, &out), 0);
+  free_findings(&out);
   EXPECT_EQ(out.items, nullptr);
   EXPECT_EQ(out.count, 0);
-  gsql_diagnostics_free(&out);
+  free_findings(&out);
 }
 
 }  // namespace
@@ -284,9 +284,9 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "parser_ffi_lib",
     srcs = [
+        "helpers.cc",
+        "helpers.h",
         "parser_ffi.cc",
-        "statement_skipper.cc",
-        "statement_skipper.h",
     ],
     hdrs = ["parser_ffi.h"],
     deps = [
@@ -325,24 +325,24 @@ cc_test(
 ```cpp
 #include "googlesql/ffi/parser_ffi.h"
 
-extern "C" int gsql_parse_script(const char*, size_t, gsql_diagnostics* out) {
+extern "C" int check_syntax(const char*, size_t, findings* out) {
   if (out != nullptr) *out = {nullptr, 0};
   return 0;
 }
 
-extern "C" void gsql_diagnostics_free(gsql_diagnostics*) {}
+extern "C" void free_findings(findings*) {}
 ```
 
-Leave `statement_skipper.cc` as just `#include "googlesql/ffi/statement_skipper.h"`, with the header from Step 5.
+Leave `helpers.cc` as just `#include "googlesql/ffi/helpers.h"`, with the header from Step 5.
 
 Run: `bazel test //googlesql/ffi:parser_ffi_test --test_output=errors`
-Expected: FAIL. The error-range tests report `diags.size()` 0 instead of 1, and `NullAndEmptyInputs` fails on the `EXPECT_NE` checks. `CleanInputsHaveNoDiagnostics` passes.
+Expected: FAIL. The error-range tests report `errors.size()` 0 instead of 1, and `NullAndEmptyInputs` fails on the `EXPECT_NE` checks. `CleanInputsHaveNoSyntaxErrors` passes.
 
-- [ ] **Step 5: Write `statement_skipper.h`**
+- [ ] **Step 5: Write `helpers.h`**
 
 ```cpp
-#ifndef GOOGLESQL_FFI_STATEMENT_SKIPPER_H_
-#define GOOGLESQL_FFI_STATEMENT_SKIPPER_H_
+#ifndef GOOGLESQL_FFI_HELPERS_H_
+#define GOOGLESQL_FFI_HELPERS_H_
 
 #include <utility>
 
@@ -357,17 +357,17 @@ std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset);
 
 // True if only whitespace and comments remain from `offset`.
 // False if the tokenizer fails, so the parser gets to report that error.
-bool OnlyTriviaFrom(absl::string_view sql, int offset);
+bool NothingSignificantFrom(absl::string_view sql, int offset);
 
 }  // namespace googlesql::ffi
 
-#endif  // GOOGLESQL_FFI_STATEMENT_SKIPPER_H_
+#endif  // GOOGLESQL_FFI_HELPERS_H_
 ```
 
-- [ ] **Step 6: Implement `statement_skipper.cc`**
+- [ ] **Step 6: Implement `helpers.cc`**
 
 ```cpp
-#include "googlesql/ffi/statement_skipper.h"
+#include "googlesql/ffi/helpers.h"
 
 #include <optional>
 #include <utility>
@@ -412,7 +412,7 @@ std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
           token->location.end().GetByteOffset()};
 }
 
-bool OnlyTriviaFrom(absl::string_view sql, int offset) {
+bool NothingSignificantFrom(absl::string_view sql, int offset) {
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, offset);
   std::optional<TokenWithLocation> token = NextSignificant(tokenizer);
   return token.has_value() && token->kind == Token::EOI;
@@ -432,7 +432,7 @@ bool OnlyTriviaFrom(absl::string_view sql, int offset) {
 #include <string>
 #include <vector>
 
-#include "googlesql/ffi/statement_skipper.h"
+#include "googlesql/ffi/helpers.h"
 #include "googlesql/parser/parser.h"
 #include "googlesql/public/error_helpers.h"
 #include "googlesql/public/error_location.pb.h"
@@ -446,10 +446,10 @@ bool OnlyTriviaFrom(absl::string_view sql, int offset) {
 
 namespace {
 
-using ::googlesql::ffi::OnlyTriviaFrom;
+using ::googlesql::ffi::NothingSignificantFrom;
 using ::googlesql::ffi::TokenRangeAt;
 
-struct Found {
+struct SyntaxError {
   int start;
   int end;
   std::string message;
@@ -477,9 +477,10 @@ int ErrorOffset(const absl::Status& status,
   return offset.ok() ? *offset : fallback;
 }
 
-// Appends one Found per syntax error. Returns false on internal failure.
-bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
-  if (OnlyTriviaFrom(sql, 0)) return true;
+// Appends each syntax error to `errors`. Returns false on internal failure.
+bool CollectSyntaxErrors(absl::string_view sql,
+                         std::vector<SyntaxError>& errors) {
+  if (NothingSignificantFrom(sql, 0)) return true;
   const googlesql::ParserOptions options = MakeParserOptions();
   const googlesql::ParseLocationTranslator translator(sql);
   googlesql::ParseResumeLocation location =
@@ -494,7 +495,7 @@ bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
     if (!absl::IsInvalidArgument(status)) return false;
     const int error_offset = ErrorOffset(status, translator, stmt_start);
     auto [start, end] = TokenRangeAt(sql, error_offset);
-    found.push_back({start, end, std::string(status.message())});
+    errors.push_back({start, end, std::string(status.message())});
     break;  // Recovery is added in Task 2.
   }
   return true;
@@ -502,29 +503,28 @@ bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
 
 }  // namespace
 
-extern "C" int gsql_parse_script(const char* sql, size_t len,
-                                 gsql_diagnostics* out) {
+extern "C" int check_syntax(const char* sql, size_t len, findings* out) {
   if (out == nullptr) return 1;
   *out = {nullptr, 0};
   if (len > static_cast<size_t>(INT32_MAX) || (sql == nullptr && len != 0)) {
     return 1;
   }
-  std::vector<Found> found;
-  if (!CollectDiagnostics(absl::string_view(sql, len), found)) return 1;
-  if (found.empty()) return 0;
-  out->items = new gsql_diagnostic[found.size()];
-  for (size_t i = 0; i < found.size(); ++i) {
-    const std::string& text = found[i].message;
+  std::vector<SyntaxError> errors;
+  if (!CollectSyntaxErrors(absl::string_view(sql, len), errors)) return 1;
+  if (errors.empty()) return 0;
+  out->items = new syntax_error[errors.size()];
+  for (size_t i = 0; i < errors.size(); ++i) {
+    const std::string& text = errors[i].message;
     char* message = new char[text.size() + 1];
     std::memcpy(message, text.c_str(), text.size() + 1);
-    out->items[i] = {static_cast<uint32_t>(found[i].start),
-                     static_cast<uint32_t>(found[i].end), message};
+    out->items[i] = {static_cast<uint32_t>(errors[i].start),
+                     static_cast<uint32_t>(errors[i].end), message};
   }
-  out->count = found.size();
+  out->count = errors.size();
   return 0;
 }
 
-extern "C" void gsql_diagnostics_free(gsql_diagnostics* out) {
+extern "C" void free_findings(findings* out) {
   if (out == nullptr) return;
   for (size_t i = 0; i < out->count; ++i) delete[] out->items[i].message;
   delete[] out->items;
@@ -538,7 +538,7 @@ Run: `bazel test //googlesql/ffi:parser_ffi_test --test_output=errors`
 Expected: PASS, all 11 tests.
 
 If a test fails, handle it this way:
-- **`CleanInputsHaveNoDiagnostics`:** find the rejected line by running it through `bazel run //googlesql/tools/execute_query:execute_query -- --mode=parse '<sql>'` with all language features enabled (see `--help`). If GoogleSQL itself rejects it, remove that line from `kCleanScript` and say so in the commit message. Do not loosen the implementation.
+- **`CleanInputsHaveNoSyntaxErrors`:** find the rejected line by running it through `bazel run //googlesql/tools/execute_query:execute_query -- --mode=parse '<sql>'` with all language features enabled (see `--help`). If GoogleSQL itself rejects it, remove that line from `kCleanScript` and say so in the commit message. Do not loosen the implementation.
 - **`UnterminatedStringRangeRunsToEndOfLine`:** if the parser reports the error somewhere other than the opening quote, change only the expected substring to the reported position and note it in the commit.
 
 - [ ] **Step 9: Commit**
@@ -553,12 +553,12 @@ git commit -m "Add parser FFI C API reporting the first syntax error" -m "Co-Aut
 ### Task 2: Block-aware recovery (all top-level errors)
 
 **Files:**
-- Modify: `googlesql/ffi/statement_skipper.h`, `googlesql/ffi/statement_skipper.cc` (add `SkipStatement`)
-- Modify: `googlesql/ffi/parser_ffi.cc` (replace the `break;` in `CollectDiagnostics`)
+- Modify: `googlesql/ffi/helpers.h`, `googlesql/ffi/helpers.cc` (add `SkipStatement`)
+- Modify: `googlesql/ffi/parser_ffi.cc` (replace the `break;` in `CollectSyntaxErrors`)
 - Test: `googlesql/ffi/parser_ffi_test.cc` (append)
 
 **Interfaces:**
-- Consumes: `TokenRangeAt`, `OnlyTriviaFrom`, `CollectDiagnostics` from Task 1.
+- Consumes: `TokenRangeAt`, `NothingSignificantFrom`, `CollectSyntaxErrors` from Task 1.
 - Produces: `int googlesql::ffi::SkipStatement(absl::string_view sql, int stmt_start, int error_offset);`
 
 - [ ] **Step 1: Append the failing tests**
@@ -568,25 +568,25 @@ Add inside the anonymous namespace of `parser_ffi_test.cc`:
 ```cpp
 TEST(ParserFfiTest, ReportsEveryTopLevelError) {
   constexpr absl::string_view sql = "SELECT 1 2;\nSELECT 3;\nSELECT 4 5;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 2);
-  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
-  EXPECT_EQ(Range(diags[1]), At(sql, "5"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 2);
+  EXPECT_EQ(Range(errors[0]), At(sql, "2"));
+  EXPECT_EQ(Range(errors[1]), At(sql, "5"));
 }
 
 TEST(ParserFfiTest, ErrorInsideBlockSkipsWholeBlock) {
   constexpr absl::string_view sql =
       "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]), At(sql, "2"));
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]), At(sql, "2"));
 }
 
 TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
   constexpr absl::string_view sql = "SELECT 1;\nSELECT 2 +";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 1);
-  EXPECT_EQ(Range(diags[0]),
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 1);
+  EXPECT_EQ(Range(errors[0]),
             std::make_pair(static_cast<int>(sql.size()),
                            static_cast<int>(sql.size())));
 }
@@ -594,33 +594,33 @@ TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
 // Accepted limit: a missing END makes recovery run to EOF.
 TEST(ParserFfiTest, MissingEndReportsOnceAndTerminates) {
   constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\nSELECT 9 8;";
-  EXPECT_EQ(Parse(sql).size(), 1);
+  EXPECT_EQ(CheckSyntax(sql).size(), 1);
 }
 
-TEST(ParserFfiTest, DiagnosticsAreSortedAndDisjoint) {
+TEST(ParserFfiTest, SyntaxErrorsAreSortedAndDisjoint) {
   constexpr absl::string_view sql =
       "SELECT 1 2;\nIF true THEN SELECT 3 4; END IF;\nSELECT 5;\nSELECT 6 +";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 3);
-  for (size_t i = 1; i < diags.size(); ++i) {
-    EXPECT_LE(diags[i - 1].end, diags[i].start);
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 3);
+  for (size_t i = 1; i < errors.size(); ++i) {
+    EXPECT_LE(errors[i - 1].end, errors[i].start);
   }
 }
 
 // Each trap is a broken statement (or block) followed by a second broken
 // statement. If the skipper over-skips, the second error ("8") is lost.
-class SkipperTrapTest : public ::testing::TestWithParam<absl::string_view> {};
+class SkippingTrapTest : public ::testing::TestWithParam<absl::string_view> {};
 
-TEST_P(SkipperTrapTest, SecondErrorIsStillReported) {
+TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
   const std::string sql = std::string(GetParam()) + "\nSELECT 9 8;";
-  std::vector<Diag> diags = Parse(sql);
-  ASSERT_EQ(diags.size(), 2) << sql;
-  EXPECT_LT(diags[0].start, diags[1].start);
-  EXPECT_EQ(Range(diags[1]), At(sql, "8")) << sql;
+  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  ASSERT_EQ(errors.size(), 2) << sql;
+  EXPECT_LT(errors[0].start, errors[1].start);
+  EXPECT_EQ(Range(errors[1]), At(sql, "8")) << sql;
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Traps, SkipperTrapTest,
+    Traps, SkippingTrapTest,
     ::testing::Values(
         "SELECT IF(true, 1, 2) );",
         "CREATE TABLE IF NOT EXISTS t (x INT64) );",
@@ -647,9 +647,9 @@ INSTANTIATE_TEST_SUITE_P(
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `bazel test //googlesql/ffi:parser_ffi_test --test_output=errors`
-Expected: FAIL. `ReportsEveryTopLevelError`, `DiagnosticsAreSortedAndDisjoint` and every `SkipperTrapTest` case get 1 diagnostic instead of 2 or 3. The Task 1 tests still pass.
+Expected: FAIL. `ReportsEveryTopLevelError`, `SyntaxErrorsAreSortedAndDisjoint` and every `SkippingTrapTest` case get 1 syntax error instead of 2 or 3. The Task 1 tests still pass.
 
-- [ ] **Step 3: Declare `SkipStatement` in `statement_skipper.h`**
+- [ ] **Step 3: Declare `SkipStatement` in `helpers.h`**
 
 Add before the closing namespace:
 
@@ -661,7 +661,7 @@ Add before the closing namespace:
 int SkipStatement(absl::string_view sql, int stmt_start, int error_offset);
 ```
 
-- [ ] **Step 4: Implement `SkipStatement` in `statement_skipper.cc`**
+- [ ] **Step 4: Implement `SkipStatement` in `helpers.cc`**
 
 Add `#include <algorithm>` and `#include <vector>`. Inside the anonymous namespace add:
 
@@ -682,7 +682,7 @@ bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
 }
 ```
 
-After `OnlyTriviaFrom` add:
+After `NothingSignificantFrom` add:
 
 ```cpp
 int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
@@ -768,7 +768,7 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
 }
 ```
 
-- [ ] **Step 5: Replace the `break;` in `CollectDiagnostics` with recovery**
+- [ ] **Step 5: Replace the `break;` in `CollectSyntaxErrors` with recovery**
 
 In `parser_ffi.cc`, add `using ::googlesql::ffi::SkipStatement;`, then replace
 
@@ -782,7 +782,7 @@ with
     int next = SkipStatement(sql, stmt_start, error_offset);
     if (next <= stmt_start) next = static_cast<int>(sql.size());  // progress
     location.set_byte_position(next);
-    at_end = OnlyTriviaFrom(sql, next);
+    at_end = NothingSignificantFrom(sql, next);
 ```
 
 - [ ] **Step 6: Run the tests**
@@ -790,7 +790,7 @@ with
 Run: `bazel test //googlesql/ffi:parser_ffi_test --test_output=errors`
 Expected: PASS, every test including all 20 trap instances.
 
-If a trap fails because the **parser** reports its first error somewhere unexpected (for example it rejects `BEGIN;` inside a block), that's fine as long as there are still 2 diagnostics and the second is at `8`. If the count is wrong, debug the skipper. Do not edit the trap.
+If a trap fails because the **parser** reports its first error somewhere unexpected (for example it rejects `BEGIN;` inside a block), that's fine as long as there are still 2 syntax errors and the second is at `8`. If the count is wrong, debug the skipper. Do not edit the trap.
 
 - [ ] **Step 7: Commit**
 
@@ -824,15 +824,15 @@ git commit -m "Recover from syntax errors at top-level statement boundaries" -m 
 #include "googlesql/ffi/parser_ffi.h"
 
 static int check(const char* sql, size_t expected) {
-  gsql_diagnostics out;
-  if (gsql_parse_script(sql, strlen(sql), &out) != 0) {
+  findings out;
+  if (check_syntax(sql, strlen(sql), &out) != 0) {
     fprintf(stderr, "internal failure on: %s\n", sql);
     return 1;
   }
   size_t count = out.count;
-  gsql_diagnostics_free(&out);
+  free_findings(&out);
   if (count != expected) {
-    fprintf(stderr, "%s: got %zu diagnostics, want %zu\n", sql, count, expected);
+    fprintf(stderr, "%s: got %zu syntax errors, want %zu\n", sql, count, expected);
     return 1;
   }
   return 0;
@@ -910,7 +910,7 @@ Write the `linkFramework` / `linkSystemLibrary` lines to match the final `linkop
 ````markdown
 # GoogleSQL parser FFI
 
-C ABI for syntax diagnostics over BigQuery scripts. See
+C ABI for syntax errors over BigQuery scripts. See
 `docs/superpowers/specs/2026-10-15-parser-ffi-design.md`.
 
 ## Build
@@ -957,7 +957,7 @@ switch (target.result.os.tag) {
 
 - `start`/`end` are byte offsets `[start, end)` into the buffer you passed.
   Convert to LSP positions on the Zig side.
-- One diagnostic per broken top-level statement. An error inside a
+- One syntax error per broken top-level statement. An error inside a
   `BEGIN…END`/`IF…END IF`/loop block skips the whole block. A missing `END`
   skips to end of file.
 ````

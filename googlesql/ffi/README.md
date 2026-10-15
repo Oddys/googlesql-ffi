@@ -1,6 +1,6 @@
 # GoogleSQL parser FFI
 
-C ABI for syntax diagnostics over BigQuery scripts. See
+C ABI for syntax errors over BigQuery scripts. See
 `docs/superpowers/specs/2026-10-15-parser-ffi-design.md`.
 
 ## Build
@@ -55,6 +55,6 @@ switch (target.result.os.tag) {
 
 - `start`/`end` are byte offsets `[start, end)` into the buffer you passed.
   Convert to LSP positions on the Zig side.
-- One diagnostic per broken top-level statement. An error inside a
+- One syntax error per broken top-level statement. An error inside a
   `BEGIN…END`/`IF…END IF`/loop block skips the whole block. A missing `END`
   skips to end of file.

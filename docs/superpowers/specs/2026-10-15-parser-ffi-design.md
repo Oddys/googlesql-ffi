@@ -6,11 +6,11 @@ Status: approved in brainstorming, pending spec review
 ## Goal
 
 A static library with a C ABI that a Zig LSP server links to publish syntax
-diagnostics for BigQuery `.sql` files. It must:
+errors for BigQuery `.sql` files. It must:
 
 - accept both standard SQL and GoogleSQL procedural (scripting) syntax;
 - report **all** syntax errors in a file, not just the first;
-- never put a diagnostic on a statement that parses successfully.
+- never put a syntax error on a statement that parses successfully.
 
 Non-goals: semantic analysis (no catalog, no unknown-table errors), warnings,
 quick-fixes, cancellation, incremental parsing. The LSP re-parses the whole
@@ -42,22 +42,22 @@ typedef struct {
   uint32_t start;       // byte offset, inclusive
   uint32_t end;         // byte offset, exclusive (== start at EOF)
   const char* message;  // NUL-terminated UTF-8, no location suffix
-} gsql_diagnostic;
+} syntax_error;
 
 typedef struct {
-  gsql_diagnostic* items;  // owned by the library
+  syntax_error* items;  // owned by the library
   size_t count;
-} gsql_diagnostics;
+} findings;
 
-// Parses sql[0..len) as a BigQuery script; sql need not be NUL-terminated.
+// Checks GoogleSQL syntax in sql[0..len); sql need not be NUL-terminated.
 // Returns 0 and fills *out (count == 0 means the input is clean).
 // Returns non-zero only on internal failure or len > INT32_MAX; *out is then
 // empty ({NULL, 0}).
-int gsql_parse_script(const char* sql, size_t len, gsql_diagnostics* out);
+int check_syntax(const char* sql, size_t len, findings* out);
 
-// Frees everything gsql_parse_script allocated in *out and resets it to
+// Frees everything check_syntax allocated in *out and resets it to
 // {NULL, 0}. Safe on an empty result.
-void gsql_diagnostics_free(gsql_diagnostics* out);
+void free_findings(findings* out);
 
 #ifdef __cplusplus
 }
@@ -68,7 +68,7 @@ Contract:
 
 - Stateless and reentrant: no init call, no globals. Each call builds its own
   `ParserOptions`. Safe to call from any thread.
-- Diagnostics are sorted by `start` and never overlap.
+- Syntax errors are sorted by `start` and never overlap.
 - Messages come from the parser in `ERROR_MESSAGE_WITH_PAYLOAD` mode, so they
   carry no `[at line:col]` suffix, e.g. `Syntax error: Unexpected keyword END`.
 - `start`/`end` are always `<= len`.
@@ -99,7 +99,7 @@ input (`parser.cc` converts against `resume_location->input()`).
 **Progress guarantee.** `SkipStatement` returns a position past at least one
 `;` that comes after `S`, or `len`. The loop always advances.
 
-## Statement skipper — `statement_skipper.{h,cc}` (internal C++)
+## Token helpers — `helpers.{h,cc}` (internal C++)
 
 ```cpp
 // [start, end) of the first non-comment token at or after `offset`.
@@ -159,7 +159,7 @@ A third helper reports whether only whitespace and comments remain:
 
 ```cpp
 // True if only whitespace/comments remain from `offset`. False on tokenizer error.
-bool OnlyTriviaFrom(absl::string_view sql, int offset);
+bool NothingSignificantFrom(absl::string_view sql, int offset);
 ```
 
 Known limits (accepted for option A):
@@ -177,8 +177,8 @@ load("@rules_cc//cc:cc_static_library.bzl", "cc_static_library")
 
 cc_library(
     name = "parser_ffi_lib",
-    srcs = ["parser_ffi.cc", "statement_skipper.cc", "statement_skipper.h"],
-    hdrs = ["parser_ffi.h"],
+    srcs = ["helpers.cc", "parser_ffi.cc"],
+    hdrs = ["helpers.h", "parser_ffi.h"],
     deps = [...],  # //googlesql/parser, tokenizer, language_options,
                    # parse_location, error_helpers, absl status/strings
 )
@@ -223,15 +223,15 @@ Write tests first (TDD). One gtest target, `//googlesql/ffi:parser_ffi_test`,
 calls only the C API. Express expected ranges as substrings: a helper finds the
 n-th occurrence of a substring in the input and returns its `[start, end)`.
 
-1. **Clean input → 0 diagnostics.** Empty, comments only, standard SQL. Also a
+1. **Clean input → 0 syntax errors.** Empty, comments only, standard SQL. Also a
    full script with `DECLARE`, `SET`, `IF/ELSEIF/ELSE/END IF`, `LOOP`,
    `WHILE ... DO`, `REPEAT ... UNTIL`, `FOR ... IN ... DO`,
    `BEGIN ... EXCEPTION WHEN ERROR THEN ... END`, labels, and
    `CREATE PROCEDURE ... BEGIN ... END`.
 2. **Multiple top-level errors.** In 3 statements with the 1st and 3rd broken,
-   expect exactly 2 diagnostics and none in the 2nd.
+   expect exactly 2 syntax errors and none in the 2nd.
 3. **Error inside a block.** `BEGIN SELECT FROM; SELECT 1; END; SELECT 2;`
-   gives exactly 1 diagnostic: none at `END;` and none on `SELECT 2`.
+   gives exactly 1 syntax error: none at `END;` and none on `SELECT 2`.
 4. **Skipper traps.** Each is followed by a statement that must stay clean:
    `IF(a,b,c)`, `CREATE TABLE IF NOT EXISTS`, `FOR SYSTEM_TIME AS OF`,
    expression `CASE ... END`, `BEGIN TRANSACTION;`, `BEGIN;`, nested blocks,
@@ -241,16 +241,16 @@ n-th occurrence of a substring in the input and returns its `[start, end)`.
    line:col → byte mapping. Also: unterminated string, and `;` inside strings
    and comments.
 6. **API contract.** Input that is not NUL-terminated (a slice of a larger
-   buffer), output sorted and non-overlapping, `free` on an empty result,
+   buffer), output sorted and non-overlapping, `free_findings` on an empty result,
    `len == 0`.
 
 **Link smoke test.** A `cc_import(static_library = ":googlesql_parser_ffi")`
 plus a `cc_test` written in pure C (`.c` source) that depends only on that
-import. It calls `gsql_parse_script` on one valid and one invalid input. This
+import. It calls `check_syntax` on one valid and one invalid input. This
 proves that the archive is self-contained.
 
 ## Extension path (option B, not in scope)
 
 Inner-block recovery replaces `SkipStatement` with a skipper that resumes at the
 next inner statement. It also needs a way to parse a block body's statements on
-their own. The C API stays unchanged: more diagnostics in the same list.
+their own. The C API stays unchanged: more syntax errors in the same list.

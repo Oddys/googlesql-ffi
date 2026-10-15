@@ -8,11 +8,13 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "parser_ffi_lib",
     srcs = [
+        "helpers.cc",
         "parser_ffi.cc",
-        "statement_skipper.cc",
-        "statement_skipper.h",
     ],
-    hdrs = ["parser_ffi.h"],
+    hdrs = [
+        "helpers.h",
+        "parser_ffi.h",
+    ],
     deps = [
         "//googlesql/parser",
         "//googlesql/parser:token",

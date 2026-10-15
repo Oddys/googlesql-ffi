@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "googlesql/ffi/statement_skipper.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "googlesql/ffi/helpers.h"
 #include "googlesql/parser/parser.h"
 #include "googlesql/public/error_helpers.h"
 #include "googlesql/public/error_location.pb.h"
@@ -14,21 +17,13 @@
 #include "googlesql/public/options.pb.h"
 #include "googlesql/public/parse_location.h"
 #include "googlesql/public/parse_resume_location.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
 
 namespace {
 
-using ::googlesql::ffi::OnlyTriviaFrom;
+using ::googlesql::ffi::NothingSignificantFrom;
 using ::googlesql::ffi::SkipStatement;
+using ::googlesql::ffi::SyntaxError;
 using ::googlesql::ffi::TokenRangeAt;
-
-struct Found {
-  int start;
-  int end;
-  std::string message;
-};
 
 googlesql::ParserOptions MakeParserOptions() {
   googlesql::LanguageOptions language_options;
@@ -42,19 +37,22 @@ googlesql::ParserOptions MakeParserOptions() {
 }
 
 // Byte offset of the error in `status`, or `fallback` if it has none.
-int ErrorOffset(const absl::Status& status,
-                const googlesql::ParseLocationTranslator& translator,
+int ErrorOffset(const absl::Status &status,
+                const googlesql::ParseLocationTranslator &translator,
                 int fallback) {
   googlesql::ErrorLocation location;
-  if (!googlesql::GetErrorLocation(status, &location)) return fallback;
+  if (!googlesql::GetErrorLocation(status, &location))
+    return fallback;
   absl::StatusOr<int> offset = translator.GetByteOffsetFromLineAndColumn(
       location.line(), location.column());
   return offset.ok() ? *offset : fallback;
 }
 
-// Appends one Found per syntax error. Returns false on internal failure.
-bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
-  if (OnlyTriviaFrom(sql, 0)) return true;
+// Appends each syntax error to `errors`. Returns false on internal failure.
+bool CollectSyntaxErrors(absl::string_view sql,
+                         std::vector<SyntaxError> &errors) {
+  if (NothingSignificantFrom(sql, 0))
+    return true;
   const googlesql::ParserOptions options = MakeParserOptions();
   const googlesql::ParseLocationTranslator translator(sql);
   googlesql::ParseResumeLocation location =
@@ -65,51 +63,58 @@ bool CollectDiagnostics(absl::string_view sql, std::vector<Found>& found) {
     std::unique_ptr<googlesql::ParserOutput> output;
     absl::Status status = googlesql::ParseNextScriptStatement(
         &location, options, &output, &at_end);
-    if (status.ok()) continue;
-    if (!absl::IsInvalidArgument(status)) return false;
+    if (status.ok())
+      continue;
+    if (!absl::IsInvalidArgument(status))
+      return false;
     const int error_offset = ErrorOffset(status, translator, stmt_start);
     auto [start, end] = TokenRangeAt(sql, error_offset);
-    found.push_back({start, end, std::string(status.message())});
+    errors.push_back({start, end, std::string(status.message())});
     int next = SkipStatement(sql, stmt_start, error_offset);
-    if (next <= stmt_start) next = static_cast<int>(sql.size());  // progress
+    if (next <= stmt_start)
+      next = static_cast<int>(sql.size()); // progress
     location.set_byte_position(next);
-    at_end = OnlyTriviaFrom(sql, next);
+    at_end = NothingSignificantFrom(sql, next);
   }
   return true;
 }
 
-}  // namespace
+} // namespace
 
-extern "C" int gsql_parse_script(const char* sql, size_t len,
-                                 gsql_diagnostics* out) {
-  if (out == nullptr) return 1;
+extern "C" int check_syntax(const char *sql, size_t len, findings *out) {
+  if (out == nullptr)
+    return 1;
   *out = {nullptr, 0};
   if (len > static_cast<size_t>(INT32_MAX) || (sql == nullptr && len != 0)) {
     return 1;
   }
   try {
-    std::vector<Found> found;
-    if (!CollectDiagnostics(absl::string_view(sql, len), found)) return 1;
-    if (found.empty()) return 0;
-    out->items = new gsql_diagnostic[found.size()]();  // zeroed
-    for (size_t i = 0; i < found.size(); ++i) {
-      const std::string& text = found[i].message;
-      char* message = new char[text.size() + 1];
+    std::vector<SyntaxError> errors;
+    if (!CollectSyntaxErrors(absl::string_view(sql, len), errors))
+      return 1;
+    if (errors.empty())
+      return 0;
+    out->items = new syntax_error[errors.size()](); // zeroed
+    for (size_t i = 0; i < errors.size(); ++i) {
+      const std::string &text = errors[i].message;
+      char *message = new char[text.size() + 1];
       std::memcpy(message, text.c_str(), text.size() + 1);
-      out->items[i] = {static_cast<uint32_t>(found[i].start),
-                       static_cast<uint32_t>(found[i].end), message};
-      out->count = i + 1;  // free only ever touches filled items
+      out->items[i] = {static_cast<uint32_t>(errors[i].start),
+                       static_cast<uint32_t>(errors[i].end), message};
+      out->count = i + 1; // free only ever touches filled items
     }
     return 0;
   } catch (...) {
-    gsql_diagnostics_free(out);
+    free_findings(out);
     return 1;
   }
 }
 
-extern "C" void gsql_diagnostics_free(gsql_diagnostics* out) {
-  if (out == nullptr) return;
-  for (size_t i = 0; i < out->count; ++i) delete[] out->items[i].message;
+extern "C" void free_findings(findings *out) {
+  if (out == nullptr)
+    return;
+  for (size_t i = 0; i < out->count; ++i)
+    delete[] out->items[i].message;
   delete[] out->items;
   *out = {nullptr, 0};
 }
