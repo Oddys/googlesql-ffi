@@ -29,6 +29,39 @@ std::optional<TokenWithLocation> NextSignificant(GoogleSqlTokenizer& tokenizer) 
   }
 }
 
+// True for reserved and non-reserved keywords.
+// Same test as IsKeywordToken in lookahead_transformer.cc, which is file-local there.
+bool IsKeyword(Token kind) {
+  return (kind > Token::SENTINEL_RESERVED_KW_START && kind < Token::SENTINEL_RESERVED_KW_END) ||
+         (kind > Token::SENTINEL_NONRESERVED_KW_START && kind < Token::SENTINEL_NONRESERVED_KW_END);
+}
+
+// Kind of `token`, or EOI if there is none (end of input or a tokenizer failure).
+Token KindOf(const std::optional<TokenWithLocation>& token) {
+  return token.has_value() ? token->kind : Token::EOI;
+}
+
+// True if `token`, followed by `next` and `after_next`, is a script label, as in `lbl: BEGIN`
+// (same rule as IsCurrentTokenScriptLabel in lookahead_transformer.cc).
+// `e` and `e1` come from the tokenizer as exponent tokens, which the parser accepts as names.
+bool IsScriptLabel(Token token, Token next, Token after_next) {
+  if (next != Token::COLON)
+    return false;
+  if (token != Token::IDENTIFIER && token != Token::EXP_IN_FLOAT_NO_SIGN &&
+      token != Token::STANDALONE_EXPONENT_SIGN && !IsKeyword(token))
+    return false;
+  switch (after_next) {
+    case Token::KW_BEGIN:
+    case Token::KW_WHILE:
+    case Token::KW_LOOP:
+    case Token::KW_REPEAT:
+    case Token::KW_FOR:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
 bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
   if (!next.has_value())
@@ -75,17 +108,42 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
   // True when the previous token lets a new statement begin here.
   bool after_boundary = true;
   Token prev = Token::EOI;  // EOI stands for "no previous token".
+  // WHILE or FOR that opened a block and still waits for its DO; EOI if none.
+  Token awaiting_do = Token::EOI;
   // Top-level CREATE ... PROCEDURE seen; its first depth-0 BEGIN is the body.
   bool create_first = true, in_create = false, proc_seen = false;
 
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, stmt_start);
+  // The token after `previous`, or nullopt if `previous` is end of input or a tokenizer failure.
+  auto read_after =
+      [&tokenizer](
+          const std::optional<TokenWithLocation>& previous) -> std::optional<TokenWithLocation> {
+    if (KindOf(previous) == Token::EOI)
+      return std::nullopt;
+    return NextSignificant(tokenizer);
+  };
   std::optional<TokenWithLocation> token = NextSignificant(tokenizer);
+  std::optional<TokenWithLocation> next = read_after(token);
   while (token.has_value() && token->kind != Token::EOI) {
-    std::optional<TokenWithLocation> next = NextSignificant(tokenizer);
-    const Token kind = token->kind;
+    std::optional<TokenWithLocation> after_next = read_after(next);
+    Token kind = token->kind;
+    // A keyword after `.`, `@` or `@@` is a name (`t.end`, `@end`), as in the lookahead
+    // transformer. `prev` keeps this kind, so `t.end if` is never END IF.
+    if ((prev == Token::DOT || prev == Token::ATSIGN || prev == Token::KW_DOUBLE_AT) &&
+        IsKeyword(kind))
+      kind = Token::IDENTIFIER;
     const bool at_statement_start =
         after_boundary && paren_depth == 0 && (frames.empty() || frames.back() != Frame::kCaseExpr);
+    // Labels go before the keyword rules, since a keyword such as LOOP can be one
+    // (`loop: LOOP`). The labeled statement starts at the block keyword after the `:`.
+    if (at_statement_start && IsScriptLabel(kind, KindOf(next), KindOf(after_next))) {
+      prev = Token::COLON;
+      token = std::move(after_next);
+      next = read_after(token);
+      continue;
+    }
     bool opened_block = false;
+    bool opened_loop_body = false;
 
     // A keyword right after END closes (END IF, END CASE, ...); never opens.
     if (prev != Token::KW_END) {
@@ -103,14 +161,30 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         case Token::KW_CASE:
           frames.push_back(at_statement_start ? Frame::kBlock : Frame::kCaseExpr);
           break;
-        case Token::KW_IF:
-        case Token::KW_LOOP:
         case Token::KW_WHILE:
-        case Token::KW_REPEAT:
         case Token::KW_FOR:
           if (at_statement_start) {
             frames.push_back(Frame::kBlock);
             opened_block = true;
+            awaiting_do = kind;
+          }
+          break;
+        case Token::KW_IF:
+        case Token::KW_LOOP:
+        case Token::KW_REPEAT:
+          if (at_statement_start) {
+            frames.push_back(Frame::kBlock);
+            opened_block = true;
+          }
+          break;
+        // DO opens a loop body only after WHILE's condition or FOR's `IN (query)`; elsewhere it
+        // is a name (`t AS do`, `FOR do IN`).
+        // Known limit: in `WHILE do > 0 DO` the first `do` is taken for the body's DO.
+        case Token::KW_DO:
+          if (awaiting_do != Token::EOI && paren_depth == 0 &&
+              (awaiting_do == Token::KW_WHILE || prev == Token::RPAREN)) {
+            opened_loop_body = true;
+            awaiting_do = Token::EOI;
           }
           break;
         default:
@@ -136,6 +210,7 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
           frames.pop_back();
         break;
       case Token::SEMICOLON:
+        awaiting_do = Token::EOI;
         create_first = true;
         in_create = proc_seen = false;
         paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
@@ -152,11 +227,12 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
     }
 
     after_boundary = kind == Token::SEMICOLON || kind == Token::KW_THEN || kind == Token::KW_ELSE ||
-                     kind == Token::KW_DO || kind == Token::COLON ||
+                     opened_loop_body ||
                      (opened_block && (kind == Token::KW_BEGIN || kind == Token::KW_LOOP ||
                                        kind == Token::KW_REPEAT));
     prev = kind;
     token = std::move(next);
+    next = std::move(after_next);
   }
   return static_cast<int>(sql.size());
 }

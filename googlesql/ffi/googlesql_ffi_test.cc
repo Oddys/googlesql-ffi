@@ -246,6 +246,25 @@ INSTANTIATE_TEST_SUITE_P(
                       "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
                       "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
                       "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
+                      // R1: a keyword after `.`, `@` or `@@` is a name.
+                      "BEGIN SELECT t.end FROM t; SELECT 1 2; END;",
+                      "BEGIN SELECT t.if FROM t; SELECT 1 2; END;",
+                      "BEGIN SELECT t.end.if FROM t; SELECT 1 2; END;",
+                      "BEGIN SELECT * FROM t WHERE ts BETWEEN @start AND @end; SELECT 1 2; END;",
+                      "BEGIN SELECT @@end; SELECT 1 2; END;",
+                      // R2: script labels, including keyword and exponent-token names.
+                      "BEGIN loop: LOOP SELECT 1 2; END LOOP loop; END;",
+                      "BEGIN Loop: loop SELECT 1 2; END LOOP; END;",
+                      "begin: BEGIN SELECT 1 2; END begin;",
+                      "while: WHILE true DO SELECT 1 2; END WHILE while;",
+                      "e: BEGIN SELECT 1 2; END;",
+                      "e1: BEGIN SELECT 1 2; END;",
+                      "BEGIN lbl /* x */ : LOOP SELECT 1 2; END LOOP lbl; END;",
+                      "a: BEGIN b: LOOP SELECT 1 2; END LOOP b; END a;",
+                      // R3: DO opens a loop body only after a WHILE or FOR header.
+                      "BEGIN SELECT * FROM t AS do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
+                      "BEGIN SELECT * FROM t do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
+                      "FOR do IN (SELECT 1) DO SELECT 1 2; END FOR;",
                       "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
 
 }  // namespace
