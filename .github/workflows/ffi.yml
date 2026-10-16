@@ -27,7 +27,7 @@ jobs:
           repository-cache: true
       - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
       - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
-      # Links a C program against just the .a and the header, the way Zig does
+      # Links a C program against just the .a and the header, the way as the library's consumers do
       - run: bazel test -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:link_smoke_test
       - name: Package
         run: |

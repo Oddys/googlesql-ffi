@@ -43,6 +43,10 @@ cc_test(
     ],
 )
 
+# All .o built from source in one arhive, except for a dependency that
+# ships prebuilt archives instead of object files - ICU here
+# Still behind a flag on Bazel 7.x; it becomes the default in Bazel 8.
+# Requires `common --experimental_cc_static_library` in `.bazelrc`
 cc_static_library(
     name = "googlesql_ffi_core",
     deps = [":googlesql_ffi_lib"],

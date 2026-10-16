@@ -7,7 +7,7 @@ C ABI for syntax errors over GoogleSQL scripts
 - One syntax error per broken top-level statement. An error inside a `BEGIN…END`/`IF…END IF`/loop block skips the whole block. A missing `END` skips to end of file.
 
 ### CI
-The version in build.zig.zon manifests [googlesql/ffi/zig](googlesql/ffi/zig) must match the release tag version.
+The version in build.zig.zon manifests (in the [zig/](./zig/) directory) must match the release tag version.
 
 ## Code style
 See [CODE_STYLE.md](googlesql/ffi/CODE_STYLE.md)
@@ -35,9 +35,9 @@ tar -czf $d.tar.gz $d
 
 Test:
 ```sh
-bazel test //googlesql/ffi:googlesql_ffi_test --test_output=all
+bazel test //googlesql/ffi/... --test_output=all
 # fresh run: ignore cached results, rerun even if nothing changed
-bazel test //googlesql/ffi:googlesql_ffi_test --nocache_test_results
+bazel test //googlesql/ffi/... --nocache_test_results
 ```
 
 Generate `compile_commands.json` for `clangd`:
