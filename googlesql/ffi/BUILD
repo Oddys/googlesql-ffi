@@ -6,14 +6,14 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
-    name = "parser_ffi_lib",
+    name = "googlesql_ffi_lib",
     srcs = [
         "helpers.cc",
-        "parser_ffi.cc",
+        "googlesql_ffi.cc",
     ],
     hdrs = [
         "helpers.h",
-        "parser_ffi.h",
+        "googlesql_ffi.h",
     ],
     deps = [
         "//googlesql/parser",
@@ -33,10 +33,10 @@ cc_library(
 )
 
 cc_test(
-    name = "parser_ffi_test",
-    srcs = ["parser_ffi_test.cc"],
+    name = "googlesql_ffi_test",
+    srcs = ["googlesql_ffi_test.cc"],
     deps = [
-        ":parser_ffi_lib",
+        ":googlesql_ffi_lib",
         "//googlesql/base/testing:googlesql_gtest_main",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
@@ -44,8 +44,8 @@ cc_test(
 )
 
 cc_static_library(
-    name = "googlesql_parser_ffi_core",
-    deps = [":parser_ffi_lib"],
+    name = "googlesql_ffi_core",
+    deps = [":googlesql_ffi_lib"],
 )
 
 # NOTE: the Linux branch is unverified (no Linux machine was available); only
@@ -53,24 +53,24 @@ cc_static_library(
 # cc_static_library does not fold in ICU (a rules_foreign_cc target with
 # prebuilt archives), so merge them in to get one self-contained archive.
 genrule(
-    name = "googlesql_parser_ffi",
+    name = "googlesql_ffi",
     srcs = [
-        ":googlesql_parser_ffi_core",
+        ":googlesql_ffi_core",
         "@icu//:icu",
     ],
-    outs = ["libgooglesql_parser_ffi.a"],
+    outs = ["libgooglesql_ffi.a"],
     cmd = select({
-        "@platforms//os:macos": "libtool -static -o $@ $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$')",
-        "@platforms//os:linux": "mkdir -p $(@D)/_merge && i=0 && for f in $(locations :googlesql_parser_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do i=$$((i+1)); cp $$f $(@D)/_merge/$$i.a; done && (echo 'CREATE $@'; for g in $(@D)/_merge/*.a; do echo \"ADDLIB $$g\"; done; echo SAVE; echo END) | ar -M",
+        "@platforms//os:macos": "libtool -static -o $@ $(locations :googlesql_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$')",
+        "@platforms//os:linux": "mkdir -p $(@D)/_merge && i=0 && for f in $(locations :googlesql_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do i=$$((i+1)); cp $$f $(@D)/_merge/$$i.a; done && (echo 'CREATE $@'; for g in $(@D)/_merge/*.a; do echo \"ADDLIB $$g\"; done; echo SAVE; echo END) | ar -M",
     }),
 )
 
 # Wraps the archive the way an external consumer (Zig) sees it: just the .a
 # plus the header, with no Bazel dependency graph.
 cc_import(
-    name = "googlesql_parser_ffi_import",
-    hdrs = ["parser_ffi.h"],
-    static_library = ":googlesql_parser_ffi",
+    name = "googlesql_ffi_import",
+    hdrs = ["googlesql_ffi.h"],
+    static_library = ":googlesql_ffi",
 )
 
 cc_test(
@@ -89,5 +89,5 @@ cc_test(
             "-lpthread",
         ],
     }),
-    deps = [":googlesql_parser_ffi_import"],
+    deps = [":googlesql_ffi_import"],
 )

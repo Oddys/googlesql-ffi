@@ -1,5 +1,5 @@
-#ifndef GOOGLESQL_FFI_PARSER_FFI_H_
-#define GOOGLESQL_FFI_PARSER_FFI_H_
+#ifndef GOOGLESQL_FFI_GOOGLESQL_FFI_H_
+#define GOOGLESQL_FFI_GOOGLESQL_FFI_H_
 
 #include <stddef.h>
 #include <stdint.h>
@@ -35,4 +35,4 @@ void free_check_result(check_result* res);
 }  // extern "C"
 #endif
 
-#endif  // GOOGLESQL_FFI_PARSER_FFI_H_
+#endif  // GOOGLESQL_FFI_GOOGLESQL_FFI_H_

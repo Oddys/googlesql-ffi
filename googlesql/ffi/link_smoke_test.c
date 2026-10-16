@@ -1,8 +1,8 @@
-// Links only libgooglesql_parser_ffi.a: proves the archive is self-contained.
+// Links only libgooglesql_ffi.a: proves the archive is self-contained.
 #include <stdio.h>
 #include <string.h>
 
-#include "googlesql/ffi/parser_ffi.h"
+#include "googlesql/ffi/googlesql_ffi.h"
 
 static int check(const char* sql, size_t expected) {
   check_result res;

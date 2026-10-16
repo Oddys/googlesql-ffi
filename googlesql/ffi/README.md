@@ -6,11 +6,11 @@ C ABI for syntax errors over BigQuery scripts. See
 ## Build
 
 ```
-bazel build //googlesql/ffi:googlesql_parser_ffi
+bazel build //googlesql/ffi:googlesql_ffi
 ```
 
-Artifacts: `bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a` and
-`googlesql/ffi/parser_ffi.h`. The archive bundles ICU.
+Artifacts: `bazel-bin/googlesql/ffi/libgooglesql_ffi.a` and
+`googlesql/ffi/googlesql_ffi.h`. The archive bundles ICU.
 
 The archive is for the host OS and CPU. Build it once per target:
 
@@ -23,7 +23,7 @@ The archive is for the host OS and CPU. Build it once per target:
 Windows is not supported (GoogleSQL does not build there). The Linux link
 flags and the Linux archive merge step are unverified.
 
-Release builds should use `bazel build -c opt //googlesql/ffi:googlesql_parser_ffi`,
+Release builds should use `bazel build -c opt //googlesql/ffi:googlesql_ffi`,
 which gives about 66 MB instead of about 800 MB.
 
 On macOS, ICU's objects are built for the host SDK's deployment target, not
@@ -34,7 +34,7 @@ built on the oldest macOS you support, or expect that warning.
 
 ```zig
 exe.addIncludePath(.{ .cwd_relative = "<googlesql>/googlesql/ffi" });
-exe.addObjectFile(.{ .cwd_relative = "<googlesql>/bazel-bin/googlesql/ffi/libgooglesql_parser_ffi.a" });
+exe.addObjectFile(.{ .cwd_relative = "<googlesql>/bazel-bin/googlesql/ffi/libgooglesql_ffi.a" });
 // The archive is built against the system C++ runtime. Do NOT use
 // exe.linkLibCpp() (Zig's bundled libc++); the two runtimes conflict.
 switch (target.result.os.tag) {
@@ -47,7 +47,7 @@ switch (target.result.os.tag) {
         exe.linkSystemLibrary("m");
         exe.linkSystemLibrary("pthread");
     },
-    else => @panic("googlesql_parser_ffi: unsupported OS"),
+    else => @panic("googlesql_ffi: unsupported OS"),
 }
 ```
 

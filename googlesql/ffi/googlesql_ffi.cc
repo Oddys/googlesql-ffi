@@ -1,4 +1,4 @@
-#include "googlesql/ffi/parser_ffi.h"
+#include "googlesql/ffi/googlesql_ffi.h"
 
 #include <cstdint>
 #include <cstring>
