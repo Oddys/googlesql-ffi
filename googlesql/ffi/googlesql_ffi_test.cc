@@ -265,6 +265,17 @@ INSTANTIATE_TEST_SUITE_P(
                       "BEGIN SELECT * FROM t AS do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
                       "BEGIN SELECT * FROM t do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
                       "FOR do IN (SELECT 1) DO SELECT 1 2; END FOR;",
+                      // R4: PROCEDURE starts a header only right after CREATE, REPLACE or a
+                      // scope; its body is the first depth-0 BEGIN after the parameter list.
+                      "CREATE TABLE procedure AS SELECT 1 begin FROM t );",
+                      "CREATE PROCEDURE begin() BEGIN SELECT 1 2; END;",
+                      "CREATE PROCEDURE IF NOT EXISTS begin() BEGIN SELECT 1 2; END;",
+                      "BEGIN CREATE PROCEDURE p() BEGIN SELECT 1 2; END; END;",
+                      "BEGIN CREATE PROCEDURE p() LANGUAGE js AS 'x'; SELECT 1 begin FROM t; "
+                      "SELECT 1 2; END;",
+                      // R5: BEGIN after `)` is a name unless it is a procedure body.
+                      "SELECT COUNT(*) begin FROM t );",
+                      "SELECT * FROM (SELECT 1) begin );",
                       "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
 
 }  // namespace

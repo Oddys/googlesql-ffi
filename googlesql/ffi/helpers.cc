@@ -62,6 +62,22 @@ bool IsScriptLabel(Token token, Token next, Token after_next) {
   }
 }
 
+// True if PROCEDURE right after `prev` is what CREATE creates:
+// CREATE [OR REPLACE] [TEMP|TEMPORARY|PUBLIC|PRIVATE] PROCEDURE.
+bool StartsProcedure(Token prev) {
+  switch (prev) {
+    case Token::KW_CREATE:
+    case Token::KW_REPLACE:
+    case Token::KW_TEMP:
+    case Token::KW_TEMPORARY:
+    case Token::KW_PUBLIC:
+    case Token::KW_PRIVATE:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
 bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
   if (!next.has_value())
@@ -103,6 +119,10 @@ bool NothingSignificantFrom(absl::string_view sql, int offset) {
 
 int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
   enum class Frame { kBlock, kCaseExpr };
+  // Where a CREATE ... PROCEDURE header is. The parameter list is required, so its `(` ends
+  // the name, and the body is the first depth-0 BEGIN after it: a procedure named `begin` is
+  // not taken for one.
+  enum class ProcHeader { kNone, kName, kAfterName };
   std::vector<Frame> frames;
   int paren_depth = 0;
   // True when the previous token lets a new statement begin here.
@@ -110,8 +130,7 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
   Token prev = Token::EOI;  // EOI stands for "no previous token".
   // WHILE or FOR that opened a block and still waits for its DO; EOI if none.
   Token awaiting_do = Token::EOI;
-  // Top-level CREATE ... PROCEDURE seen; its first depth-0 BEGIN is the body.
-  bool create_first = true, in_create = false, proc_seen = false;
+  ProcHeader proc_header = ProcHeader::kNone;
 
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, stmt_start);
   // The token after `previous`, or nullopt if `previous` is end of input or a tokenizer failure.
@@ -149,13 +168,13 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
     if (prev != Token::KW_END) {
       switch (kind) {
         case Token::KW_BEGIN:
-          // BEGIN is non-reserved, so it opens a block only at statement start
-          // or as a procedure body after ')'.
-          if ((at_statement_start || prev == Token::RPAREN || (proc_seen && paren_depth == 0)) &&
+          // BEGIN is non-reserved, so it opens a block only at statement start or as a procedure
+          // body.
+          if ((at_statement_start || (proc_header == ProcHeader::kAfterName && paren_depth == 0)) &&
               !BeginsTransaction(next)) {
             frames.push_back(Frame::kBlock);
             opened_block = true;
-            proc_seen = false;
+            proc_header = ProcHeader::kNone;
           }
           break;
         case Token::KW_CASE:
@@ -192,15 +211,15 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
       }
     }
 
-    if (frames.empty() && create_first)
-      in_create = kind == Token::KW_CREATE;
-    create_first = false;
-    if (in_create && kind == Token::KW_PROCEDURE)
-      proc_seen = true;
-
     switch (kind) {
       case Token::LPAREN:
+        if (proc_header == ProcHeader::kName)
+          proc_header = ProcHeader::kAfterName;
         ++paren_depth;
+        break;
+      case Token::KW_PROCEDURE:
+        if (StartsProcedure(prev))
+          proc_header = ProcHeader::kName;
         break;
       case Token::RPAREN:
         paren_depth = std::max(0, paren_depth - 1);
@@ -211,8 +230,7 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
         break;
       case Token::SEMICOLON:
         awaiting_do = Token::EOI;
-        create_first = true;
-        in_create = proc_seen = false;
+        proc_header = ProcHeader::kNone;
         paren_depth = 0;  // ';' never sits inside parentheses in valid SQL.
         // A CASE expression cannot contain ';', so any open one is unclosed.
         while (!frames.empty() && frames.back() == Frame::kCaseExpr) {
