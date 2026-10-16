@@ -11,21 +11,21 @@
 
 namespace {
 
-using ::googlesql::ffi::SyntaxError;
+using ::googlesql::ffi::GsqlError;
 
-// A test wrapper around check_syntax
-std::vector<SyntaxError> CheckSyntax(absl::string_view sql) {
-  findings out;
-  EXPECT_EQ(check_syntax(sql.data(), sql.size(), &out), 0);
-  std::vector<SyntaxError> result;
-  for (size_t i = 0; i < out.count; ++i) {
+// A test wrapper around check_gsql
+std::vector<GsqlError> CheckGsql(absl::string_view sql) {
+  check_result res;
+  EXPECT_EQ(check_gsql(sql.data(), sql.size(), &res), 0);
+  std::vector<GsqlError> result;
+  for (size_t i = 0; i < res.count; ++i) {
     result.push_back({
-        static_cast<int>(out.items[i].start),
-        static_cast<int>(out.items[i].end),
-        out.items[i].message,
+        static_cast<int>(res.errors[i].start),
+        static_cast<int>(res.errors[i].end),
+        res.errors[i].message,
     });
   }
-  free_findings(&out);
+  free_check_result(&res);
   return result;
 }
 
@@ -39,7 +39,7 @@ std::pair<int, int> At(absl::string_view sql, absl::string_view needle, int n = 
   return {static_cast<int>(pos), static_cast<int>(pos + needle.size())};
 }
 
-std::pair<int, int> Range(const SyntaxError& e) {
+std::pair<int, int> Range(const GsqlError& e) {
   return {e.start, e.end};
 }
 
@@ -63,7 +63,7 @@ BEGIN TRANSACTION; COMMIT TRANSACTION;
 FROM t |> WHERE true |> SELECT *;
 )sql";
 
-TEST(ParserFfiTest, CleanInputsHaveNoSyntaxErrors) {
+TEST(ParserFfiTest, CleanInputsHaveNoErrors) {
   for (absl::string_view sql : {
            absl::string_view(""),
            absl::string_view("  \n\t"),
@@ -72,13 +72,13 @@ TEST(ParserFfiTest, CleanInputsHaveNoSyntaxErrors) {
            absl::string_view("SELECT 1;\nSELECT 2;"),
            kCleanScript,
        }) {
-    EXPECT_TRUE(CheckSyntax(sql).empty()) << sql;
+    EXPECT_TRUE(CheckGsql(sql).empty()) << sql;
   }
 }
 
 TEST(ParserFfiTest, ErrorRangeIsOffendingToken) {
   constexpr absl::string_view sql = "SELECT 1 2;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
   EXPECT_TRUE(absl::StartsWith(errors[0].message, "Syntax error")) << errors[0].message;
@@ -87,28 +87,28 @@ TEST(ParserFfiTest, ErrorRangeIsOffendingToken) {
 
 TEST(ParserFfiTest, ErrorAfterMultibyteAndTabs) {
   constexpr absl::string_view sql = "SELECT 'äö',\t'ü';\n\tSELECT 1 2;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
 }
 
 TEST(ParserFfiTest, ErrorAfterCrlf) {
   constexpr absl::string_view sql = "SELECT 1;\r\nSELECT 3 4;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "4"));
 }
 
 TEST(ParserFfiTest, ErrorAfterLoneCr) {
   constexpr absl::string_view sql = "SELECT 1;\rSELECT 3 4;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "4"));
 }
 
 TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   constexpr absl::string_view sql = "SELECT 1 +";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]),
             std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
@@ -116,51 +116,51 @@ TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
   constexpr absl::string_view sql = "SELECT 'abc\nSELECT 2;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "'abc"));
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeStopsBeforeCrlf) {
   constexpr absl::string_view sql = "SELECT 'abc\r\nSELECT 2;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "'abc"));
 }
 
 TEST(ParserFfiTest, InputNeedNotBeNulTerminated) {
   const std::string buffer = "SELECT 1;garbage(";
-  findings out;
-  ASSERT_EQ(check_syntax(buffer.data(), 9, &out), 0);  // "SELECT 1;"
-  EXPECT_EQ(out.count, 0);
-  free_findings(&out);
+  check_result res;
+  ASSERT_EQ(check_gsql(buffer.data(), 9, &res), 0);  // "SELECT 1;"
+  EXPECT_EQ(res.count, 0);
+  free_check_result(&res);
 }
 
 TEST(ParserFfiTest, NullAndEmptyInputs) {
-  findings out;
-  ASSERT_EQ(check_syntax(nullptr, 0, &out), 0);
-  EXPECT_EQ(out.count, 0);
-  EXPECT_EQ(out.items, nullptr);
-  EXPECT_NE(check_syntax(nullptr, 5, &out), 0);
-  EXPECT_EQ(out.count, 0);
-  EXPECT_NE(check_syntax("SELECT 1", 8, nullptr), 0);
+  check_result res;
+  ASSERT_EQ(check_gsql(nullptr, 0, &res), 0);
+  EXPECT_EQ(res.count, 0);
+  EXPECT_EQ(res.errors, nullptr);
+  EXPECT_NE(check_gsql(nullptr, 5, &res), 0);
+  EXPECT_EQ(res.count, 0);
+  EXPECT_NE(check_gsql("SELECT 1", 8, nullptr), 0);
 }
 
 TEST(ParserFfiTest, FreeIsIdempotent) {
-  findings out = {nullptr, 0};
-  free_findings(&out);
-  free_findings(&out);
-  free_findings(nullptr);
-  ASSERT_EQ(check_syntax("SELECT 1 2", 10, &out), 0);
-  free_findings(&out);
-  EXPECT_EQ(out.items, nullptr);
-  EXPECT_EQ(out.count, 0);
-  free_findings(&out);
+  check_result res = {nullptr, 0};
+  free_check_result(&res);
+  free_check_result(&res);
+  free_check_result(nullptr);
+  ASSERT_EQ(check_gsql("SELECT 1 2", 10, &res), 0);
+  free_check_result(&res);
+  EXPECT_EQ(res.errors, nullptr);
+  EXPECT_EQ(res.count, 0);
+  free_check_result(&res);
 }
 
 TEST(ParserFfiTest, ReportsEveryTopLevelError) {
   constexpr absl::string_view sql = "SELECT 1 2;\nSELECT 3;\nSELECT 4 5;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 2);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
   EXPECT_EQ(Range(errors[1]), At(sql, "5"));
@@ -168,14 +168,14 @@ TEST(ParserFfiTest, ReportsEveryTopLevelError) {
 
 TEST(ParserFfiTest, ErrorInsideBlockSkipsWholeBlock) {
   constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\n  SELECT 3;\nEND;\nSELECT 4;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]), At(sql, "2"));
 }
 
 TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
   constexpr absl::string_view sql = "SELECT 1;\nSELECT 2 +";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
   EXPECT_EQ(Range(errors[0]),
             std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
@@ -184,13 +184,13 @@ TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
 // Accepted limit: a missing END makes recovery run to EOF.
 TEST(ParserFfiTest, MissingEndReportsOnceAndTerminates) {
   constexpr absl::string_view sql = "BEGIN\n  SELECT 1 2;\nSELECT 9 8;";
-  EXPECT_EQ(CheckSyntax(sql).size(), 1);
+  EXPECT_EQ(CheckGsql(sql).size(), 1);
 }
 
-TEST(ParserFfiTest, SyntaxErrorsAreSortedAndDisjoint) {
+TEST(ParserFfiTest, ErrorsAreSortedAndDisjoint) {
   constexpr absl::string_view sql =
       "SELECT 1 2;\nIF true THEN SELECT 3 4; END IF;\nSELECT 5;\nSELECT 6 +";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 3);
   for (size_t i = 1; i < errors.size(); ++i) {
     EXPECT_LE(errors[i - 1].end, errors[i].start);
@@ -201,7 +201,7 @@ TEST(ParserFfiTest, UnclosedCaseExprDoesNotFlagValidCode) {
   constexpr absl::string_view sql =
       "SELECT CASE WHEN a THEN 1 FROM t;\nWHILE x DO\n  IF y THEN SELECT 1; "
       "END IF;\nEND WHILE;\nSELECT 9 8;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 2);
   EXPECT_EQ(Range(errors[1]), At(sql, "8"));
 }
@@ -212,7 +212,7 @@ class SkippingTrapTest : public ::testing::TestWithParam<absl::string_view> {};
 
 TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
   const std::string sql = std::string(GetParam()) + "\nSELECT 9 8;";
-  std::vector<SyntaxError> errors = CheckSyntax(sql);
+  std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 2) << sql;
   EXPECT_LT(errors[0].start, errors[1].start);
   EXPECT_EQ(Range(errors[1]), At(sql, "8")) << sql;

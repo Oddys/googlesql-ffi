@@ -20,9 +20,9 @@
 
 namespace {
 
+using ::googlesql::ffi::GsqlError;
 using ::googlesql::ffi::NothingSignificantFrom;
 using ::googlesql::ffi::SkipStatement;
-using ::googlesql::ffi::SyntaxError;
 using ::googlesql::ffi::TokenRangeAt;
 
 googlesql::ParserOptions MakeParserOptions() {
@@ -52,7 +52,7 @@ int ErrorOffset(const absl::Status& status,
 
 // Appends each syntax error to `errors`.
 // Returns false on internal failure.
-bool CollectSyntaxErrors(absl::string_view sql, std::vector<SyntaxError>& errors) {
+bool CollectGsqlErrors(absl::string_view sql, std::vector<GsqlError>& errors) {
   if (NothingSignificantFrom(sql, 0))
     return true;
   const googlesql::ParserOptions options = MakeParserOptions();
@@ -81,43 +81,43 @@ bool CollectSyntaxErrors(absl::string_view sql, std::vector<SyntaxError>& errors
 
 }  // namespace
 
-extern "C" int check_syntax(const char* sql, size_t len, findings* out) {
-  if (out == nullptr)
+extern "C" int check_gsql(const char* sql, size_t len, check_result* res) {
+  if (res == nullptr)
     return 1;
-  *out = {nullptr, 0};
+  *res = {nullptr, 0};
   if (len > static_cast<size_t>(INT32_MAX) || (sql == nullptr && len != 0)) {
     return 1;
   }
   try {
-    std::vector<SyntaxError> errors;
-    if (!CollectSyntaxErrors(absl::string_view(sql, len), errors))
+    std::vector<GsqlError> errors;
+    if (!CollectGsqlErrors(absl::string_view(sql, len), errors))
       return 1;
     if (errors.empty())
       return 0;
-    out->items = new syntax_error[errors.size()]();  // zeroed
+    res->errors = new gsql_error[errors.size()]();  // zeroed
     for (size_t i = 0; i < errors.size(); ++i) {
       const std::string& text = errors[i].message;
       char* message = new char[text.size() + 1];
       std::memcpy(message, text.c_str(), text.size() + 1);
-      out->items[i] = {
+      res->errors[i] = {
           static_cast<uint32_t>(errors[i].start),
           static_cast<uint32_t>(errors[i].end),
           message,
       };
-      out->count = i + 1;  // free only ever touches filled items
+      res->count = i + 1;  // free only ever touches filled errors
     }
     return 0;
   } catch (...) {
-    free_findings(out);
+    free_check_result(res);
     return 1;
   }
 }
 
-extern "C" void free_findings(findings* out) {
-  if (out == nullptr)
+extern "C" void free_check_result(check_result* res) {
+  if (res == nullptr)
     return;
-  for (size_t i = 0; i < out->count; ++i)
-    delete[] out->items[i].message;
-  delete[] out->items;
-  *out = {nullptr, 0};
+  for (size_t i = 0; i < res->count; ++i)
+    delete[] res->errors[i].message;
+  delete[] res->errors;
+  *res = {nullptr, 0};
 }

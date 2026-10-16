@@ -5,13 +5,13 @@
 #include "googlesql/ffi/parser_ffi.h"
 
 static int check(const char* sql, size_t expected) {
-  findings out;
-  if (check_syntax(sql, strlen(sql), &out) != 0) {
+  check_result res;
+  if (check_gsql(sql, strlen(sql), &res) != 0) {
     fprintf(stderr, "internal failure on: %s\n", sql);
     return 1;
   }
-  size_t count = out.count;
-  free_findings(&out);
+  size_t count = res.count;
+  free_check_result(&res);
   if (count != expected) {
     fprintf(stderr, "%s: got %zu syntax errors, want %zu\n", sql, count, expected);
     return 1;

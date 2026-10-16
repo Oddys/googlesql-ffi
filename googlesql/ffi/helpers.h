@@ -8,8 +8,8 @@
 
 namespace googlesql::ffi {
 
-// C++ counterpart of the C `syntax_error`: [start, end) byte range + message.
-struct SyntaxError {
+// C++ counterpart of the C `gsql_error`: [start, end) byte range + message.
+struct GsqlError {
   int start;
   int end;
   std::string message;

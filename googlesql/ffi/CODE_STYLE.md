@@ -10,7 +10,7 @@ It picks up `googlesql/ffi/.clang-format`, which covers layout (Google base, 100
 - Add a trailing comma to braced init list that wraps (does not fit a single line), so that
   clang-format puts one element per line. 
 ```cpp
-out->items[i] = {
+res->errors[i] = {
     static_cast<uint32_t>(errors[i].start),
     static_cast<uint32_t>(errors[i].end),
     message,
