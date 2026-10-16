@@ -1,8 +1,8 @@
 .{
-    .name = .googlesql_parser_macos_arm64,
+    .name = .googlesql_ffi_macos_arm64,
     // Keep in sync with the release tag (without the leading v); CI checks this.
-    .version = "0.1.0-2026.9.1",
-    .fingerprint = 0x23937d7f6c5a3e91, // Changing this has security and trust implications.
+    .version = "0.2.0-2026.10.16",
+    .fingerprint = 0xfb6d393e6c5a3e91, // Changing this has security and trust implications.
     .minimum_zig_version = "0.17.0",
     .paths = .{ "build.zig.zon", "lib", "include" },
 }

@@ -1,46 +1,11 @@
 ## A fork of GoogleSQL - Analyzer Framework for SQL
-In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI to the parser, 
+In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI (syntax checks) to the parser,
 so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
 
 Handling of procedural syntax is implemented using internal [parser](googlesql/parser/parser.h)
 because scripting statements are not supported by the public API (see [parse_helpers.h](googlesql/public/parse_helpers.h:40))
 
-### CI
-The version in build.zig.zon manifests [googlesql/ffi/zig](googlesql/ffi/zig) must match the release tag version.
-
-### Usage:
-Build (on a host matching the platform):
-```sh
-# platforms: macos_x86_64, macos_arm64, linux_x86_64, linux_aarch64
-bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_parser
-```
-Build artifacts can be found in `bazel-bin/googlesql/ffi`.
-
-Prebuilt archives (`lib/libgooglesql_parser.a` + `include/googlesql_parser.h`) for all four platforms
-are produced by the [ffi workflow](.github/workflows/ffi.yml), run manually or on a `v*` tag.
-
-To create a tar locally for testing:
-```sh
-# Specify your platform
-platform=macos_x86_64
-d="googlesql_parser_$platform"
-mkdir -p $d/lib $d/include
-cp bazel-bin/googlesql/ffi/libgooglesql_parser.a $d/lib/
-cp googlesql/ffi/googlesql_parser.h $d/include/
-tar -czf $d.tar.gz $d
-```
-
-Test:
-```sh
-bazel test //googlesql/ffi:googlesql_parser_test --test_output=all
-# fresh run: ignore cached results, rerun even if nothing changed
-bazel test //googlesql/ffi:googlesql_parser_test --nocache_test_results
-```
-
-Generate `compile_commands.json` for `clangd`:
-```sh
-bazel run //googlesql/ffi:refresh_compile_commands
-```
+For more details see [ffi/README.md](googlesql/ffi/README.md)
 
 ## GoogleSQL - Analyzer Framework for SQL
 

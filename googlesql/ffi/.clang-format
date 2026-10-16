@@ -1,6 +1,22 @@
 BasedOnStyle: Google
 ColumnLimit: 100
-BinPackParameters: OnePerLine                         # one parameter per line in declarations/definitions
-BinPackArguments: false                          # same thing for arguments at call sites
-AllowAllParametersOfDeclarationOnNextLine: false # don't put all params together on the next line
-AlignAfterOpenBracket: Align                     # align continuation params under the first one
+# One parameter per line in declarations/definitions.
+BinPackParameters: OnePerLine
+# Same thing for arguments at call sites.
+BinPackArguments: false
+# Don't put all params together on the next line.
+AllowAllParametersOfDeclarationOnNextLine: false
+# Don't put all args together on the next line.
+AllowAllArgumentsOnNextLine: false
+# Align continuation params under the first one.
+AlignAfterOpenBracket: Align
+# If body always on its own line.
+AllowShortIfStatementsOnASingleLine: Never
+# While/for body always on its own line.
+AllowShortLoopsOnASingleLine: false
+# Always `const char* p`, never guess from the code.
+DerivePointerAlignment: false
+# Function body (e.g. return) always on its own line.
+AllowShortFunctionsOnASingleLine: None
+# Same for lambdas.
+AllowShortLambdasOnASingleLine: None

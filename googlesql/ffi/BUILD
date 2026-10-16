@@ -1,41 +1,21 @@
-#
-# Copyright 2019 Google LLC
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-#
-
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_static_library.bzl", "cc_static_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
-package(default_visibility = ["//googlesql/base:googlesql_implementation"])
+package(default_visibility = ["//visibility:public"])
 
-licenses(["notice"])
-
-refresh_compile_commands(
-    name = "refresh_compile_commands",
-    targets = {"//googlesql/ffi/..." : "-c opt"}, # must be same options that used for `bazel build`
-)
-
-# Produces .o files
 cc_library(
-    name = "googlesql_parser_ffi",
-    srcs = ["googlesql_parser.cc"],
-    hdrs = ["googlesql_parser.h"],
-    linkstatic = 1,
+    name = "googlesql_ffi_lib",
+    srcs = [
+        "helpers.cc",
+        "googlesql_ffi.cc",
+    ],
+    hdrs = [
+        "helpers.h",
+        "googlesql_ffi.h",
+    ],
     deps = [
-        "//googlesql/base:status",
         "//googlesql/parser",
         "//googlesql/parser:token",
         "//googlesql/parser:token_with_location",
@@ -43,71 +23,82 @@ cc_library(
         "//googlesql/public:error_helpers",
         "//googlesql/public:error_location_cc_proto",
         "//googlesql/public:language_options",
-        "//googlesql/public:parse_helpers",
+        "//googlesql/public:options_cc_proto",
         "//googlesql/public:parse_location",
         "//googlesql/public:parse_resume_location",
-        "@com_google_absl//absl/base:no_destructor",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
 
+cc_test(
+    name = "googlesql_ffi_test",
+    srcs = ["googlesql_ffi_test.cc"],
+    deps = [
+        ":googlesql_ffi_lib",
+        "//googlesql/base/testing:googlesql_gtest_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 # All .o built from source in one arhive, except for a dependency that
 # ships prebuilt archives instead of object files - ICU here
 # Still behind a flag on Bazel 7.x; it becomes the default in Bazel 8.
-# Requires `build --experimental_cc_static_library` in `.bazelrc`
+# Requires `common --experimental_cc_static_library` in `.bazelrc`
 cc_static_library(
-    name = "googlesql_parser_nodeps",
-    deps = [":googlesql_parser_ffi"],
+    name = "googlesql_ffi_core",
+    deps = [":googlesql_ffi_lib"],
 )
 
-# The .a files among the srcs of googlesql_parser
-ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep '\\.a$$')"
+# The .a files among the srcs of googlesql_ffi: the core archive plus ICU's uc, i18n and data.
+ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep -E '(libgooglesql_ffi_core|libicu(uc|i18n|data))\\.a$$')"
 
-# The shipped artifact
-# Command (macos_x86_64 example):
-#   bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_parser
-# Merges .a produced by googlesql_parser_nodeps and .a of ICU:
-# - cmd
-#   - $(AR) is the archive tool.
-#     - On macOS it's libtool
-#     - On Linux it's ar
-#   - $@ is the output path, libgooglesql_parser.a.
-#   - $$ escapes a literal $ for the shell, because Bazel uses $ for its own substitutions.
-# - toolchains: this is what makes $(AR) available. It gives the command the same archiver the C++ compiler setup uses.
+# cc_static_library does not fold in ICU (a rules_foreign_cc target with
+# prebuilt archives), so merge them in to get one self-contained archive.
+# $(AR) is libtool on macOS and ar on Linux; ar takes an MRI script via -M.
 genrule(
-    name = "googlesql_parser",
+    name = "googlesql_ffi",
     srcs = [
-        ":googlesql_parser_nodeps",
+        ":googlesql_ffi_core",
         "@icu//:icu",
     ],
-    outs = ["libgooglesql_parser.a"],
+    outs = ["libgooglesql_ffi.a"],
     cmd = select({
         "@platforms//os:macos": "$(AR) -static -no_warning_for_no_symbols -o $@ " + ARCHIVES,
-        # ar takes an MRI script via -M:
-        # create libgooglesql_parser.a
-        # addlib (for each .a file)
-        # save
-        # end
         "@platforms//os:linux": "(echo 'create $@'; " +
                                 "for a in " + ARCHIVES + "; do echo \"addlib $$a\"; done; " +
                                 "echo save; echo end) | $(AR) -M",
     }),
     toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
-    visibility = ["//visibility:public"],
+)
+
+# Wraps the archive the way an external consumer (Zig) sees it: just the .a
+# plus the header, with no Bazel dependency graph.
+cc_import(
+    name = "googlesql_ffi_import",
+    hdrs = ["googlesql_ffi.h"],
+    static_library = ":googlesql_ffi",
 )
 
 cc_test(
-    name = "googlesql_parser_test",
-    srcs = ["googlesql_parser_test.cc"],
-    deps = [
-        ":googlesql_parser_ffi",
-        "//googlesql/base/testing:googlesql_gtest_main",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-    ],
+    name = "link_smoke_test",
+    srcs = ["link_smoke_test.c"],
+    # No default branch: an unsupported OS (Windows) fails here, loudly.
+    linkopts = select({
+        "@platforms//os:macos": [
+            "-lc++",
+            "-framework",
+            "CoreFoundation",
+        ],
+        "@platforms//os:linux": [
+            "-lstdc++",
+            "-lm",
+            "-lpthread",
+        ],
+    }),
+    deps = [":googlesql_ffi_import"],
 )
 
 platform(

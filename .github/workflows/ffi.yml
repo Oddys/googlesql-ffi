@@ -25,14 +25,16 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ matrix.platform }}
           repository-cache: true
-      - run: bazel test -c opt //googlesql/ffi:googlesql_parser_test
-      - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_parser
+      - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
+      - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
+      # Links a C program against just the .a and the header, the way as the library's consumers do
+      - run: bazel test -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:link_smoke_test
       - name: Package
         run: |
-          d=googlesql_parser_${{ matrix.platform }}
+          d=googlesql_ffi_${{ matrix.platform }}
           mkdir -p $d/lib $d/include
-          cp bazel-bin/googlesql/ffi/libgooglesql_parser.a $d/lib/
-          cp googlesql/ffi/googlesql_parser.h $d/include/
+          cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/
+          cp googlesql/ffi/googlesql_ffi.h $d/include/
           # A manifest makes `zig fetch` produce a named hash (<name>-<version>-...) instead of N-V-...
           cp googlesql/ffi/zig/${{ matrix.platform }}/build.zig.zon $d/
           # Tag build fails if the manifest version wasn't bumped to match the tag
@@ -40,8 +42,8 @@ jobs:
           tar -czf $d.tar.gz $d
       - uses: actions/upload-artifact@v7
         with:
-          name: googlesql_parser_${{ matrix.platform }}
-          path: googlesql_parser_${{ matrix.platform }}.tar.gz
+          name: googlesql_ffi_${{ matrix.platform }}
+          path: googlesql_ffi_${{ matrix.platform }}.tar.gz
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
