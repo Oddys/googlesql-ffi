@@ -1,3 +1,5 @@
+Before committing/pushing ask the user to approve. Proceed to the next task/step after approval.
+
 ## Code style
 
 Follow code style specified in @CODE_STYLE.md
