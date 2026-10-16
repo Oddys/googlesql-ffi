@@ -1,3 +1,12 @@
+## A fork of GoogleSQL - Analyzer Framework for SQL
+In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI (syntax checks) to the parser,
+so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
+
+Handling of procedural syntax is implemented using internal [parser](googlesql/parser/parser.h)
+because scripting statements are not supported by the public API (see [parse_helpers.h](googlesql/public/parse_helpers.h:40))
+
+For more details see [ffi/README.md](googlesql/ffi/README.md)
+
 ## GoogleSQL - Analyzer Framework for SQL
 
 > GoogleSQL was previously named ZetaSQL. Please refer to [this

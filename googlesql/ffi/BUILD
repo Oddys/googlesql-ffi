@@ -48,10 +48,12 @@ cc_static_library(
     deps = [":googlesql_ffi_lib"],
 )
 
-# NOTE: the Linux branch is unverified (no Linux machine was available); only
-# the macOS branch has been built and tested.
+# The .a files among the srcs of googlesql_ffi: the core archive plus ICU's uc, i18n and data.
+ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep -E '(libgooglesql_ffi_core|libicu(uc|i18n|data))\\.a$$')"
+
 # cc_static_library does not fold in ICU (a rules_foreign_cc target with
 # prebuilt archives), so merge them in to get one self-contained archive.
+# $(AR) is libtool on macOS and ar on Linux; ar takes an MRI script via -M.
 genrule(
     name = "googlesql_ffi",
     srcs = [
@@ -60,9 +62,12 @@ genrule(
     ],
     outs = ["libgooglesql_ffi.a"],
     cmd = select({
-        "@platforms//os:macos": "libtool -static -o $@ $(locations :googlesql_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$')",
-        "@platforms//os:linux": "mkdir -p $(@D)/_merge && i=0 && for f in $(locations :googlesql_ffi_core) $$(echo $(locations @icu//:icu) | tr ' ' '\\n' | grep -E 'libicu(uc|i18n|data)\\.a$$'); do i=$$((i+1)); cp $$f $(@D)/_merge/$$i.a; done && (echo 'CREATE $@'; for g in $(@D)/_merge/*.a; do echo \"ADDLIB $$g\"; done; echo SAVE; echo END) | ar -M",
+        "@platforms//os:macos": "$(AR) -static -no_warning_for_no_symbols -o $@ " + ARCHIVES,
+        "@platforms//os:linux": "(echo 'create $@'; " +
+                                "for a in " + ARCHIVES + "; do echo \"addlib $$a\"; done; " +
+                                "echo save; echo end) | $(AR) -M",
     }),
+    toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
 )
 
 # Wraps the archive the way an external consumer (Zig) sees it: just the .a
@@ -90,4 +95,36 @@ cc_test(
         ],
     }),
     deps = [":googlesql_ffi_import"],
+)
+
+platform(
+    name = "macos_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:macos",
+    ],
+)
+
+platform(
+    name = "macos_arm64",
+    constraint_values = [
+        "@platforms//cpu:arm64",
+        "@platforms//os:macos",
+    ],
+)
+
+platform(
+    name = "linux_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:linux",
+    ],
+)
+
+platform(
+    name = "linux_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
 )
