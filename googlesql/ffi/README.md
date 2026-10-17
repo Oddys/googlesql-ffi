@@ -7,7 +7,9 @@ C ABI for syntax errors over GoogleSQL scripts
 - One syntax error per broken top-level statement. An error inside a `BEGIN…END`/`IF…END IF`/loop block skips the whole block. A missing `END` skips to end of file.
 
 ### CI
-The version in build.zig.zon manifests (in the [zig/](./zig/) directory) must match the release tag version.
+The release tag format is vX.Y.Z-yyyy-m-n (e.g. v0.1.0-2026.9.1), where X.Y.Z is FFI's own SemVer version, and yyyy-m-n is the upstream's version (year.month.number).
+
+The version in build.zig.zon manifests (in the [zig/](./zig/) directory) must match the release tag version (without the leading v).
 
 ## Code style
 See [CODE_STYLE.md](googlesql/ffi/CODE_STYLE.md)
