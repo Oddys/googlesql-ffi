@@ -4,7 +4,7 @@
 ```sh
 clang-format -i googlesql/ffi/*.{h,cc,c}
 ``` 
-It picks up `googlesql/ffi/.clang-format`, which covers layout (Google base, 100 columns).
+It picks up settings in `googlesql/ffi/.clang-format`.
 
 ## Rules
 - Add a trailing comma to braced init list that wraps (does not fit a single line), so that
