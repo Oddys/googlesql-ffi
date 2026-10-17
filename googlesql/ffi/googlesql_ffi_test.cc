@@ -110,8 +110,10 @@ TEST(ParserFfiTest, ErrorAtEofIsZeroWidth) {
   constexpr absl::string_view sql = "SELECT 1 +";
   std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
-  EXPECT_EQ(Range(errors[0]),
-            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
+  EXPECT_EQ(
+      Range(errors[0]),
+      std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size()))
+  );
 }
 
 TEST(ParserFfiTest, UnterminatedStringRangeRunsToEndOfLine) {
@@ -177,8 +179,10 @@ TEST(ParserFfiTest, ErrorAtEofAfterValidStatements) {
   constexpr absl::string_view sql = "SELECT 1;\nSELECT 2 +";
   std::vector<GsqlError> errors = CheckGsql(sql);
   ASSERT_EQ(errors.size(), 1);
-  EXPECT_EQ(Range(errors[0]),
-            std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size())));
+  EXPECT_EQ(
+      Range(errors[0]),
+      std::make_pair(static_cast<int>(sql.size()), static_cast<int>(sql.size()))
+  );
 }
 
 // Accepted limit: a missing END makes recovery run to EOF.
@@ -221,61 +225,64 @@ TEST_P(SkippingTrapTest, SecondErrorIsStillReported) {
 INSTANTIATE_TEST_SUITE_P(
     Traps,
     SkippingTrapTest,
-    ::testing::Values("SELECT IF(true, 1, 2) );",
-                      "CREATE TABLE IF NOT EXISTS t (x INT64) );",
-                      "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
-                      "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
-                      "SELECT CASE WHEN true THEN 1 FROM t;",
-                      "SELECT begin FROM t );",
-                      "BEGIN TRANSACTION );",
-                      "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
-                      "BEGIN BEGIN SELECT 1 2; END; END;",
-                      "END;",
-                      "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
-                      "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
-                      "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
-                      "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; "
-                      "END;",
-                      "CREATE PROCEDURE p() EXTERNAL SECURITY INVOKER BEGIN SELECT 1 2; "
-                      "SELECT 3; END;",
-                      "CREATE PROCEDURE p() WITH CONNECTION c BEGIN SELECT 1 2; SELECT 3; "
-                      "END;",
-                      "WHILE true DO SELECT 1 2; END WHILE;",
-                      "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
-                      "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
-                      "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
-                      "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
-                      "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
-                      // R1: a keyword after `.`, `@` or `@@` is a name.
-                      "BEGIN SELECT t.end FROM t; SELECT 1 2; END;",
-                      "BEGIN SELECT t.if FROM t; SELECT 1 2; END;",
-                      "BEGIN SELECT t.end.if FROM t; SELECT 1 2; END;",
-                      "BEGIN SELECT * FROM t WHERE ts BETWEEN @start AND @end; SELECT 1 2; END;",
-                      "BEGIN SELECT @@end; SELECT 1 2; END;",
-                      // R2: script labels, including keyword and exponent-token names.
-                      "BEGIN loop: LOOP SELECT 1 2; END LOOP loop; END;",
-                      "BEGIN Loop: loop SELECT 1 2; END LOOP; END;",
-                      "begin: BEGIN SELECT 1 2; END begin;",
-                      "while: WHILE true DO SELECT 1 2; END WHILE while;",
-                      "e: BEGIN SELECT 1 2; END;",
-                      "e1: BEGIN SELECT 1 2; END;",
-                      "BEGIN lbl /* x */ : LOOP SELECT 1 2; END LOOP lbl; END;",
-                      "a: BEGIN b: LOOP SELECT 1 2; END LOOP b; END a;",
-                      // R3: DO opens a loop body only after a WHILE or FOR header.
-                      "BEGIN SELECT * FROM t AS do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
-                      "BEGIN SELECT * FROM t do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
-                      "FOR do IN (SELECT 1) DO SELECT 1 2; END FOR;",
-                      // R4: PROCEDURE starts a header only right after CREATE, REPLACE or a
-                      // scope; its body is the first depth-0 BEGIN after the parameter list.
-                      "CREATE TABLE procedure AS SELECT 1 begin FROM t );",
-                      "CREATE PROCEDURE begin() BEGIN SELECT 1 2; END;",
-                      "CREATE PROCEDURE IF NOT EXISTS begin() BEGIN SELECT 1 2; END;",
-                      "BEGIN CREATE PROCEDURE p() BEGIN SELECT 1 2; END; END;",
-                      "BEGIN CREATE PROCEDURE p() LANGUAGE js AS 'x'; SELECT 1 begin FROM t; "
-                      "SELECT 1 2; END;",
-                      // R5: BEGIN after `)` is a name unless it is a procedure body.
-                      "SELECT COUNT(*) begin FROM t );",
-                      "SELECT * FROM (SELECT 1) begin );",
-                      "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"));
+    ::testing::Values(
+        "SELECT IF(true, 1, 2) );",
+        "CREATE TABLE IF NOT EXISTS t (x INT64) );",
+        "SELECT * FROM t FOR SYSTEM_TIME AS OF CURRENT_TIMESTAMP() );",
+        "SELECT CASE WHEN true THEN IF(true, 1, 2) ELSE REPEAT('a', 2) END );",
+        "SELECT CASE WHEN true THEN 1 FROM t;",
+        "SELECT begin FROM t );",
+        "BEGIN TRANSACTION );",
+        "BEGIN\n  BEGIN TRANSACTION;\n  BEGIN;\n  SELECT 1 2;\n  COMMIT;\nEND;",
+        "BEGIN BEGIN SELECT 1 2; END; END;",
+        "END;",
+        "lbl: LOOP\n  SELECT 1 2;\nEND LOOP lbl;",
+        "IF (true) THEN\n  SELECT 1 2;\nEND IF;",
+        "CREATE PROCEDURE p() BEGIN SELECT 1 2; END;",
+        "CREATE PROCEDURE p() OPTIONS (strict_mode = false) BEGIN SELECT 1 2; "
+        "END;",
+        "CREATE PROCEDURE p() EXTERNAL SECURITY INVOKER BEGIN SELECT 1 2; "
+        "SELECT 3; END;",
+        "CREATE PROCEDURE p() WITH CONNECTION c BEGIN SELECT 1 2; SELECT 3; "
+        "END;",
+        "WHILE true DO SELECT 1 2; END WHILE;",
+        "REPEAT SELECT 1 2; UNTIL true END REPEAT;",
+        "FOR r IN (SELECT 1) DO SELECT 1 2; END FOR;",
+        "CASE 1 WHEN 1 THEN SELECT 1 2; ELSE SELECT 3; END CASE;",
+        "BEGIN SELECT 1 2; EXCEPTION WHEN ERROR THEN SELECT 3; END;",
+        "IF true THEN SELECT CASE WHEN true THEN 1 END; SELECT 1 2; END IF;",
+        // R1: a keyword after `.`, `@` or `@@` is a name.
+        "BEGIN SELECT t.end FROM t; SELECT 1 2; END;",
+        "BEGIN SELECT t.if FROM t; SELECT 1 2; END;",
+        "BEGIN SELECT t.end.if FROM t; SELECT 1 2; END;",
+        "BEGIN SELECT * FROM t WHERE ts BETWEEN @start AND @end; SELECT 1 2; END;",
+        "BEGIN SELECT @@end; SELECT 1 2; END;",
+        // R2: script labels, including keyword and exponent-token names.
+        "BEGIN loop: LOOP SELECT 1 2; END LOOP loop; END;",
+        "BEGIN Loop: loop SELECT 1 2; END LOOP; END;",
+        "begin: BEGIN SELECT 1 2; END begin;",
+        "while: WHILE true DO SELECT 1 2; END WHILE while;",
+        "e: BEGIN SELECT 1 2; END;",
+        "e1: BEGIN SELECT 1 2; END;",
+        "BEGIN lbl /* x */ : LOOP SELECT 1 2; END LOOP lbl; END;",
+        "a: BEGIN b: LOOP SELECT 1 2; END LOOP b; END a;",
+        // R3: DO opens a loop body only after a WHILE or FOR header.
+        "BEGIN SELECT * FROM t AS do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
+        "BEGIN SELECT * FROM t do FOR SYSTEM_TIME AS OF x; SELECT 1 2; END;",
+        "FOR do IN (SELECT 1) DO SELECT 1 2; END FOR;",
+        // R4: PROCEDURE starts a header only right after CREATE, REPLACE or a
+        // scope; its body is the first depth-0 BEGIN after the parameter list.
+        "CREATE TABLE procedure AS SELECT 1 begin FROM t );",
+        "CREATE PROCEDURE begin() BEGIN SELECT 1 2; END;",
+        "CREATE PROCEDURE IF NOT EXISTS begin() BEGIN SELECT 1 2; END;",
+        "BEGIN CREATE PROCEDURE p() BEGIN SELECT 1 2; END; END;",
+        "BEGIN CREATE PROCEDURE p() LANGUAGE js AS 'x'; SELECT 1 begin FROM t; "
+        "SELECT 1 2; END;",
+        // R5: BEGIN after `)` is a name unless it is a procedure body.
+        "SELECT COUNT(*) begin FROM t );",
+        "SELECT * FROM (SELECT 1) begin );",
+        "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"
+    )
+);
 
 }  // namespace

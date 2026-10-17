@@ -8,15 +8,15 @@ BinPackArguments: false
 AllowAllParametersOfDeclarationOnNextLine: false
 # Don't put all args together on the next line.
 AllowAllArgumentsOnNextLine: false
-# Align continuation params under the first one.
-AlignAfterOpenBracket: Align
+# Each param/arg and the closing parenthesis on its own line.
+AlignAfterOpenBracket: BlockIndent
 # If body always on its own line.
 AllowShortIfStatementsOnASingleLine: Never
 # While/for body always on its own line.
 AllowShortLoopsOnASingleLine: false
-# Always `const char* p`, never guess from the code.
-DerivePointerAlignment: false
 # Function body (e.g. return) always on its own line.
 AllowShortFunctionsOnASingleLine: None
 # Same for lambdas.
 AllowShortLambdasOnASingleLine: None
+# Code in nested namespaces is indented (allows to fold a namespace block in the editor)
+NamespaceIndentation: Inner

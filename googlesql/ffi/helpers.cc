@@ -12,87 +12,88 @@
 #include "googlesql/parser/tokenizer.h"
 
 namespace googlesql::ffi {
+
 namespace {
+  using ::googlesql::parser::GoogleSqlTokenizer;
+  using ::googlesql::parser::Token;
+  using ::googlesql::parser::TokenWithLocation;
 
-using ::googlesql::parser::GoogleSqlTokenizer;
-using ::googlesql::parser::Token;
-using ::googlesql::parser::TokenWithLocation;
-
-// Next non-comment token, or nullopt if the tokenizer fails.
-std::optional<TokenWithLocation> NextSignificant(GoogleSqlTokenizer& tokenizer) {
-  while (true) {
-    absl::StatusOr<TokenWithLocation> token = tokenizer.GetNextToken();
-    if (!token.ok())
-      return std::nullopt;
-    if (token->kind != Token::COMMENT)
-      return *token;
+  // Next non-comment token, or nullopt if the tokenizer fails.
+  std::optional<TokenWithLocation> NextSignificant(GoogleSqlTokenizer& tokenizer) {
+    while (true) {
+      absl::StatusOr<TokenWithLocation> token = tokenizer.GetNextToken();
+      if (!token.ok())
+        return std::nullopt;
+      if (token->kind != Token::COMMENT)
+        return *token;
+    }
   }
-}
 
-// True for reserved and non-reserved keywords.
-// Same test as IsKeywordToken in lookahead_transformer.cc, which is file-local there.
-bool IsKeyword(Token kind) {
-  return (kind > Token::SENTINEL_RESERVED_KW_START && kind < Token::SENTINEL_RESERVED_KW_END) ||
-         (kind > Token::SENTINEL_NONRESERVED_KW_START && kind < Token::SENTINEL_NONRESERVED_KW_END);
-}
+  // True for reserved and non-reserved keywords.
+  // Same test as IsKeywordToken in lookahead_transformer.cc, which is file-local there.
+  bool IsKeyword(Token kind) {
+    return (kind > Token::SENTINEL_RESERVED_KW_START && kind < Token::SENTINEL_RESERVED_KW_END) ||
+           (kind > Token::SENTINEL_NONRESERVED_KW_START &&
+            kind < Token::SENTINEL_NONRESERVED_KW_END);
+  }
 
-// Kind of `token`, or EOI if there is none (end of input or a tokenizer failure).
-Token KindOf(const std::optional<TokenWithLocation>& token) {
-  return token.has_value() ? token->kind : Token::EOI;
-}
+  // Kind of `token`, or EOI if there is none (end of input or a tokenizer failure).
+  Token KindOf(const std::optional<TokenWithLocation>& token) {
+    return token.has_value() ? token->kind : Token::EOI;
+  }
 
-// True if `token`, followed by `next` and `after_next`, is a script label, as in `lbl: BEGIN`
-// (same rule as IsCurrentTokenScriptLabel in lookahead_transformer.cc).
-// `e` and `e1` come from the tokenizer as exponent tokens, which the parser accepts as names.
-bool IsScriptLabel(Token token, Token next, Token after_next) {
-  if (next != Token::COLON)
-    return false;
-  if (token != Token::IDENTIFIER && token != Token::EXP_IN_FLOAT_NO_SIGN &&
-      token != Token::STANDALONE_EXPONENT_SIGN && !IsKeyword(token))
-    return false;
-  switch (after_next) {
-    case Token::KW_BEGIN:
-    case Token::KW_WHILE:
-    case Token::KW_LOOP:
-    case Token::KW_REPEAT:
-    case Token::KW_FOR:
-      return true;
-    default:
+  // True if `token`, followed by `next` and `after_next`, is a script label, as in `lbl: BEGIN`
+  // (same rule as IsCurrentTokenScriptLabel in lookahead_transformer.cc).
+  // `e` and `e1` come from the tokenizer as exponent tokens, which the parser accepts as names.
+  bool IsScriptLabel(Token token, Token next, Token after_next) {
+    if (next != Token::COLON)
       return false;
-  }
-}
-
-// True if PROCEDURE right after `prev` is what CREATE creates:
-// CREATE [OR REPLACE] [TEMP|TEMPORARY|PUBLIC|PRIVATE] PROCEDURE.
-bool StartsProcedure(Token prev) {
-  switch (prev) {
-    case Token::KW_CREATE:
-    case Token::KW_REPLACE:
-    case Token::KW_TEMP:
-    case Token::KW_TEMPORARY:
-    case Token::KW_PUBLIC:
-    case Token::KW_PRIVATE:
-      return true;
-    default:
+    if (token != Token::IDENTIFIER && token != Token::EXP_IN_FLOAT_NO_SIGN &&
+        token != Token::STANDALONE_EXPONENT_SIGN && !IsKeyword(token))
       return false;
+    switch (after_next) {
+      case Token::KW_BEGIN:
+      case Token::KW_WHILE:
+      case Token::KW_LOOP:
+      case Token::KW_REPEAT:
+      case Token::KW_FOR:
+        return true;
+      default:
+        return false;
+    }
   }
-}
 
-// BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
-bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
-  if (!next.has_value())
-    return true;
-  switch (next->kind) {
-    case Token::EOI:
-    case Token::SEMICOLON:
-    case Token::KW_TRANSACTION:
-    case Token::KW_ISOLATION:
-    case Token::KW_READ:
-      return true;
-    default:
-      return false;
+  // True if PROCEDURE right after `prev` is what CREATE creates:
+  // CREATE [OR REPLACE] [TEMP|TEMPORARY|PUBLIC|PRIVATE] PROCEDURE.
+  bool StartsProcedure(Token prev) {
+    switch (prev) {
+      case Token::KW_CREATE:
+      case Token::KW_REPLACE:
+      case Token::KW_TEMP:
+      case Token::KW_TEMPORARY:
+      case Token::KW_PUBLIC:
+      case Token::KW_PRIVATE:
+        return true;
+      default:
+        return false;
+    }
   }
-}
+
+  // BEGIN followed by these is BEGIN [TRANSACTION] [modes], not a block.
+  bool BeginsTransaction(const std::optional<TokenWithLocation>& next) {
+    if (!next.has_value())
+      return true;
+    switch (next->kind) {
+      case Token::EOI:
+      case Token::SEMICOLON:
+      case Token::KW_TRANSACTION:
+      case Token::KW_ISOLATION:
+      case Token::KW_READ:
+        return true;
+      default:
+        return false;
+    }
+  }
 }  // namespace
 
 std::pair<int, int> TokenRangeAt(absl::string_view sql, int offset) {
@@ -134,9 +135,9 @@ int SkipStatement(absl::string_view sql, int stmt_start, int error_offset) {
 
   GoogleSqlTokenizer tokenizer(/*filename=*/"", sql, stmt_start);
   // The token after `previous`, or nullopt if `previous` is end of input or a tokenizer failure.
-  auto read_after =
-      [&tokenizer](
-          const std::optional<TokenWithLocation>& previous) -> std::optional<TokenWithLocation> {
+  auto read_after = [&tokenizer](
+                        const std::optional<TokenWithLocation>& previous
+                    ) -> std::optional<TokenWithLocation> {
     if (KindOf(previous) == Token::EOI)
       return std::nullopt;
     return NextSignificant(tokenizer);

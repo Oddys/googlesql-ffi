@@ -35,13 +35,16 @@ googlesql::ParserOptions MakeParserOptions() {
       language_options,
       {.mode = googlesql::ERROR_MESSAGE_WITH_PAYLOAD, .attach_error_location_payload = true},
       googlesql::parser::MacroExpansionMode::kNone,
-      /*macro_catalog=*/nullptr);
+      /*macro_catalog=*/nullptr
+  );
 }
 
 // Byte offset of the error in `status`, or `fallback` if it has none.
-int ErrorOffset(const absl::Status& status,
-                const googlesql::ParseLocationTranslator& translator,
-                int fallback) {
+int ErrorOffset(
+    const absl::Status& status,
+    const googlesql::ParseLocationTranslator& translator,
+    int fallback
+) {
   googlesql::ErrorLocation location;
   if (!googlesql::GetErrorLocation(status, &location))
     return fallback;
