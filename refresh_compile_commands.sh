@@ -46,3 +46,6 @@ refresh_compile_commands(
 EOF
 
 bazel run //googlesql/ffi:refresh_compile_commands
+# Hedron only extracts flags; generated headers (*.pb.h, tm_token.h) must exist for clangd to find them.
+bazel build -c opt --features=-parse_headers --host_features=-parse_headers \
+  --output_groups=compilation_prerequisites_INTERNAL_ //googlesql/ffi/...
