@@ -35,6 +35,8 @@ jobs:
           mkdir -p $d/lib $d/include
           cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/
           cp googlesql/ffi/googlesql_ffi.h $d/include/
+          cp LICENSE $d/
+          cp -r googlesql/ffi/LICENSES $d/
           # A manifest makes `zig fetch` produce a named hash (<name>-<version>-...) instead of N-V-...
           cp googlesql/ffi/zig/${{ matrix.platform }}/build.zig.zon $d/
           # Tag build fails if the manifest version wasn't bumped to match the tag

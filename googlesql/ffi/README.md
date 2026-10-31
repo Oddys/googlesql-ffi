@@ -46,3 +46,33 @@ Generate `compile_commands.json` for `clangd`:
 ```sh
 ./refresh_compile_commands.sh
 ```
+
+## Third-party licenses
+LICENSES/ holds the license files of the dependency versions actually built, and
+[licenses-metadata.json](googlesql/ffi/LICENSES/licenses-metadata.json) records where each one came from.
+
+To list dependencies:
+```sh
+bazel cquery 'deps(//googlesql/ffi:googlesql_ffi_lib)' --notool_deps --noimplicit_deps 2>/dev/null \
+  | grep -oE '^@[^/]+//(.*/)?third_party/[^/:]+|^@[^/ ]+' \
+  | sort -u \
+  | grep -vE '^@(platforms|rules_cc|bazel_tools)(//|$)'
+```
+Lists `repo_name`s as specified in [MODULE.bazel](MODULE.bazel) (actual versions from MODULE.bazel.lock) 
+plus ICU from [bazel/http_archive_deps.bzl](bazel/http_archive_deps.bzl) 
+plus transitive dependencies.
+
+If the produced list differ from the one used in [check_linked.sh](googlesql/ffi/check_linked.sh) the latter must be updated.
+
+To check which dependencies are linked: 
+```sh
+./googlesql/ffi/check_linked.sh <path to .a file>
+```
+If count > 0, the library is linked. The output lists the actual names of dependencies (e.g. the name "nlohmann_json" instead of the repo_name "json").
+
+If the produced list differ from the one used in [fetch_licenses.py](googlesql/ffi/fetch_licenses.py) the latter must be updated.
+
+To fetch license documents:
+```sh
+uv run googlesql/ffi/fetch_licenses.py
+```

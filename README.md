@@ -1,11 +1,15 @@
 ## A fork of GoogleSQL - Analyzer Framework for SQL
-In [googlesql/ffi/](googlesql/ffi/) provides a simple FFI (syntax checks) to the parser,
+Provides a simple FFI (syntax checks) to the parser in [googlesql/ffi/](googlesql/ffi/),
 so that it could be used by a language server implemented in other languages, e.g. Zig or Rust.
 
 Handling of procedural syntax is implemented using internal [parser](googlesql/parser/parser.h)
 because scripting statements are not supported by the public API (see [parse_helpers.h](googlesql/public/parse_helpers.h:40))
 
 For more details see [ffi/README.md](googlesql/ffi/README.md)
+
+New Contributions & Modifications ([ffi](googlesql/ffi/), [ffi.yml](.github/workflows/ffi.yml), [refresh_compile_commands.sh](refresh_compile_commands.sh)): Copyright (c) 2026 Oddys
+
+This README was modified from the upstream version: this section was added.
 
 ## GoogleSQL - Analyzer Framework for SQL
 

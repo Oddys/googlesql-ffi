@@ -1,0 +1,47 @@
+[
+  {
+    "dependency": "abseil-cpp",
+    "fetched_from": "https://raw.githubusercontent.com/abseil/abseil-cpp/20260107.0/LICENSE",
+    "saved_as": "abseil-cpp/LICENSE"
+  },
+  {
+    "dependency": "googleapis",
+    "fetched_from": "https://raw.githubusercontent.com/googleapis/googleapis/2193a2bfcecb92b92aad7a4d81baa428cafd7dfd/LICENSE",
+    "saved_as": "googleapis/LICENSE"
+  },
+  {
+    "dependency": "googletest",
+    "fetched_from": "https://raw.githubusercontent.com/google/googletest/v1.17.0/LICENSE",
+    "saved_as": "googletest/LICENSE"
+  },
+  {
+    "dependency": "icu",
+    "fetched_from": "https://raw.githubusercontent.com/unicode-org/icu/release-76-1/LICENSE",
+    "saved_as": "icu/LICENSE"
+  },
+  {
+    "dependency": "nlohmann_json",
+    "fetched_from": "https://raw.githubusercontent.com/nlohmann/json/v3.12.0/LICENSE.MIT",
+    "saved_as": "nlohmann_json/LICENSE.MIT"
+  },
+  {
+    "dependency": "protobuf",
+    "fetched_from": "https://raw.githubusercontent.com/protocolbuffers/protobuf/v33.5/LICENSE",
+    "saved_as": "protobuf/LICENSE"
+  },
+  {
+    "dependency": "utf8_range",
+    "fetched_from": "https://raw.githubusercontent.com/protocolbuffers/protobuf/v33.5/third_party/utf8_range/LICENSE",
+    "saved_as": "utf8_range/LICENSE"
+  },
+  {
+    "dependency": "re2",
+    "fetched_from": "https://raw.githubusercontent.com/google/re2/2025-08-12/LICENSE",
+    "saved_as": "re2/LICENSE"
+  },
+  {
+    "dependency": "zlib",
+    "fetched_from": "https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE",
+    "saved_as": "zlib/LICENSE"
+  }
+]

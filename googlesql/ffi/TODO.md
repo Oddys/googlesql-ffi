@@ -1,0 +1,1 @@
+- [ ] Check if I can avoid linking googletest into the binary
