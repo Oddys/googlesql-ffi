@@ -67,6 +67,8 @@ build:windows --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-cla
 build:windows --extra_execution_platforms=//googlesql/ffi:windows_x86_64
 build:windows --platforms=//googlesql/ffi:windows_x86_64
 build:windows --features=static_link_msvcrt
+# cc_static_library enables symbol_check, whose /WX:4006 is lib.exe-only; llvm-lib reads it as a file name.
+build:windows --features=-symbol_check
 # 128-bit integer helpers (__udivti3, __floattidf, ...) for GoogleSQL's __int128 code.
 # lld-link finds it in clang's resource dir. Consumers (Zig) bring their own compiler_rt.
 build:windows --linkopt=clang_rt.builtins-x86_64.lib --host_linkopt=clang_rt.builtins-x86_64.lib
