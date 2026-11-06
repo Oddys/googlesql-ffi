@@ -1,0 +1,38 @@
+# THROWAWAY spike: how far does the FFI build get on Windows/MSVC?
+name: spike-windows
+
+on:
+  push:
+    branches: ["spike/windows"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: windows_x86_64, runner: windows-latest }
+          - { platform: windows_aarch64, runner: windows-11-arm }
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: bazel-contrib/setup-bazel@0.19.0
+        with:
+          bazelisk-cache: true
+          disk-cache: spike-${{ matrix.platform }}
+          repository-cache: true
+      # Short output root: Windows MAX_PATH bites deep Bazel trees.
+      # MSVC needs /std:c++20; the clang -std flag from .bazelrc is ignored by cl.
+      - run: |
+          bazel --output_user_root=C:/b build -c opt --keep_going \
+            --cxxopt=/std:c++20 --host_cxxopt=/std:c++20 \
+            //googlesql/ffi:googlesql_ffi_lib 2>&1 | tee build.log
+      - if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: build-log-${{ matrix.platform }}
+          path: build.log
