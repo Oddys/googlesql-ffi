@@ -48,6 +48,13 @@ GOOGLESQL_JAVA_ARTIFACTS = [
 ]
 
 bazel_dep(name = "abseil-cpp", version = "20260107.0", repo_name = "com_google_absl")
+# Modified by Oddys: abseil disables intrinsic __int128 for clang on Windows, but GoogleSQL
+# converts between __int128 and absl::int128, so clang-cl (x64) needs it on.
+single_version_override(
+    module_name = "abseil-cpp",
+    patch_strip = 1,
+    patches = ["//bazel:abseil_clang_cl_int128.patch"],
+)
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "io_abseil_py")
 bazel_dep(name = "bazel_features", version = "1.33.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.1")
