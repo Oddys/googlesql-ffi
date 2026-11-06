@@ -1,1 +1,2 @@
 - [ ] Check if I can avoid linking googletest into the binary
+- [ ] Windows ARM64 (windows_aarch64)? Blocked by gRPC pip hub needing Python 3.10, which rules_python lacks on Windows ARM
