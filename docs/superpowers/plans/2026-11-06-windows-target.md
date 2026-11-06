@@ -189,29 +189,29 @@
 - Consumes: `@icu_windows//:libs` (Task 2) and `:googlesql_ffi_core`.
 - Produces: `bazel-bin/googlesql/ffi/libgooglesql_ffi.a` on every OS. On Windows it's a COFF archive (the genrule output name is fixed; `cc_import` accepts it). The Package step copies it to `lib/googlesql_ffi.lib` on Windows.
 
-- [ ] **Step 1: Add the Windows branch to the genrule `cmd`:**
+- [x] **Step 1: Add the Windows branch to the genrule `cmd`:**
   `"@platforms//os:windows": "$(AR) -NOLOGO -OUT:$@ $$(echo $(SRCS) | tr ' ' '\\n' | grep -E '\\.lib$$')"`
   Use dash-style switches, not `/OUT:`: genrules run under Git Bash, whose MSYS path conversion would rewrite `/`-prefixed arguments. `$(AR)` is the clang-cl toolchain's `llvm-lib`/`lib.exe`.
-- [ ] **Step 2: Update `link_smoke_test`.**
+- [x] **Step 2: Update `link_smoke_test`.**
   - Add `"@platforms//os:windows": []` to `linkopts`.
   - Update the comment above it ("No default branch: an unsupported OS fails here, loudly.").
   - If the CI link reports unresolved Windows system symbols, add only the libs it names (e.g. `"advapi32.lib"`).
-- [ ] **Step 3: Update the Package step in `ffi.yml`.** Pick the file name by OS:
+- [x] **Step 3: Update the Package step in `ffi.yml`.** Pick the file name by OS:
   ```bash
   if [[ $RUNNER_OS == Windows ]]; then lib=googlesql_ffi.lib; else lib=libgooglesql_ffi.a; fi
   cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/$lib
   ```
   Everything else stays the same.
-- [ ] **Step 4: Add the CRT check step** (`if: runner.os == 'Windows'`, after the build):
+- [x] **Step 4: Add the CRT check step** (`if: runner.os == 'Windows'`, after the build):
   ```bash
   directives=$(dumpbin -nologo -directives bazel-bin/googlesql/ffi/libgooglesql_ffi.a)
   grep -qi 'libcmt' <<<"$directives"
   ! grep -qiE 'DEFAULTLIB:"?(msvcrt|msvcprt)' <<<"$directives"
   ```
   `dumpbin` isn't on PATH by default. Find it with `vswhere` or use `llvm-objdump --coff-directives` (LLVM is on the runner). Use whichever needs less setup.
-- [ ] **Step 5: Run on macOS:** `bazel test -c opt //googlesql/ffi:link_smoke_test`.
+- [x] **Step 5: Run on macOS:** `bazel test -c opt //googlesql/ffi:link_smoke_test`.
   Expected: PASS, with the macOS genrule output unchanged.
-- [ ] **Step 6: Commit** (after owner approval), push, and dispatch CI.
+- [x] **Step 6: Commit** (after owner approval), push, and dispatch CI.
   Expected:
   - All five jobs green.
   - The Windows artifact `googlesql_ffi_windows_x86_64` contains `lib/googlesql_ffi.lib`.
