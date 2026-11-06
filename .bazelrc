@@ -58,7 +58,17 @@ common --enable_platform_specific_config
 # C++20 is required to build GoogleSQL, hence `-cxxopt=-std=c++20`. On MacOS
 # `--host_cxxopt=-std=c++20` is also needed.
 # "--java_runtime_version=remotejdk_11": to make the build more hermetic.
-build --cxxopt=-std=c++20 --host_cxxopt=-std=c++20 --config=clang --java_runtime_version=remotejdk_11
+# Modified by Oddys: clang/gcc flags only off Windows; Windows uses clang-cl (MSVC ABI).
+build --java_runtime_version=remotejdk_11
+build:linux --cxxopt=-std=c++20 --host_cxxopt=-std=c++20 --config=clang
+build:macos --cxxopt=-std=c++20 --host_cxxopt=-std=c++20 --config=clang
+build:windows --cxxopt=/std:c++20 --host_cxxopt=/std:c++20
+build:windows --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl
+build:windows --extra_execution_platforms=//googlesql/ffi:windows_x86_64
+build:windows --platforms=//googlesql/ffi:windows_x86_64
+build:windows --features=static_link_msvcrt
+# TEMPORARY (removed in Task 5): report all compile errors per CI round.
+build:windows --keep_going
 
 # Force Go to build in PIE mode to avoid "relocation R_X86_64_64" errors on
 # modern Linux environments where the LLVM toolchain enforces PIE.

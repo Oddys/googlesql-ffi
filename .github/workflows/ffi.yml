@@ -17,7 +17,11 @@ jobs:
           - { platform: macos_arm64, runner: macos-26 }
           - { platform: linux_x86_64, runner: ubuntu-22.04 }
           - { platform: linux_aarch64, runner: ubuntu-22.04-arm }
+          - { platform: windows_x86_64, runner: windows-latest }
     runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v7
       - uses: bazel-contrib/setup-bazel@0.19.0
@@ -25,6 +29,9 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ matrix.platform }}
           repository-cache: true
+      # A short output root avoids Windows path-length failures
+      - if: runner.os == 'Windows'
+        run: echo 'startup --output_user_root=C:/b' >> ~/.bazelrc
       - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
       - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
       # Links a C program against just the .a and the header, the way as the library's consumers do
