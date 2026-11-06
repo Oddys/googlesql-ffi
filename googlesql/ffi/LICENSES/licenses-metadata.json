@@ -20,6 +20,11 @@
     "saved_as": "icu/LICENSE"
   },
   {
+    "dependency": "icu-windows",
+    "fetched_from": "https://raw.githubusercontent.com/unicode-org/icu/release-78.1/LICENSE",
+    "saved_as": "icu-windows/LICENSE"
+  },
+  {
     "dependency": "nlohmann_json",
     "fetched_from": "https://raw.githubusercontent.com/nlohmann/json/v3.12.0/LICENSE.MIT",
     "saved_as": "nlohmann_json/LICENSE.MIT"

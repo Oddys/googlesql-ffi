@@ -17,12 +17,21 @@ See [CODE_STYLE.md](googlesql/ffi/CODE_STYLE.md)
 ### Usage:
 Build (on a host matching the platform):
 ```sh
-# platforms: macos_x86_64, macos_arm64, linux_x86_64, linux_aarch64
+# platforms: macos_x86_64, macos_arm64, linux_x86_64, linux_aarch64, windows_x86_64
 bazel build -c opt --platforms=//googlesql/ffi:macos_x86_64 //googlesql/ffi:googlesql_ffi
 ```
 Build artifacts can be found in `bazel-bin/googlesql/ffi`.
 
-Prebuilt archives (`lib/libgooglesql_ffi.a` + `include/googlesql_ffi.h`) for all four platforms are produced by the [ffi workflow](.github/workflows/ffi.yml), run manually or on a `v*` tag.
+Windows needs LLVM and vcpkg. Install ICU 78.1 (vcpkg has no 76.x) from the repo root first:
+```sh
+vcpkg install --triplet x64-windows-static
+bazel build -c opt //googlesql/ffi:googlesql_ffi
+```
+Bazel applies `build:windows` from [.bazelrc](.bazelrc) and builds with clang-cl.
+The output is still named `libgooglesql_ffi.a`, but it is an MSVC-ABI COFF archive with a static CRT (`/MT`).
+Zig links it for `x86_64-windows-msvc` on a machine with MSVC installed.
+
+Prebuilt archives (`lib/libgooglesql_ffi.a`, or `lib/googlesql_ffi.lib` on Windows, + `include/googlesql_ffi.h`) for all five platforms are produced by the [ffi workflow](.github/workflows/ffi.yml), run manually or on a `v*` tag.
 
 To create a tar locally for testing on the caller's side:
 ```sh
@@ -30,7 +39,7 @@ To create a tar locally for testing on the caller's side:
 platform=macos_x86_64
 d="googlesql_ffi_$platform"
 mkdir -p $d/lib $d/include
-cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/
+cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/  # on Windows: $d/lib/googlesql_ffi.lib
 cp googlesql/ffi/googlesql_ffi.h $d/include/
 tar -czf $d.tar.gz $d
 ```
@@ -59,12 +68,12 @@ bazel cquery 'deps(//googlesql/ffi:googlesql_ffi_lib)' --notool_deps --noimplici
   | grep -vE '^@(platforms|rules_cc|bazel_tools)(//|$)'
 ```
 Lists `repo_name`s as specified in [MODULE.bazel](MODULE.bazel) (actual versions from MODULE.bazel.lock) 
-plus ICU from [bazel/http_archive_deps.bzl](bazel/http_archive_deps.bzl) 
+plus ICU from [bazel/http_archive_deps.bzl](bazel/http_archive_deps.bzl) (on Windows, from [vcpkg.json](vcpkg.json))
 plus transitive dependencies.
 
 If the produced list differ from the one used in [check_linked.sh](googlesql/ffi/check_linked.sh) the latter must be updated.
 
-To check which dependencies are linked: 
+To check which dependencies are linked (macOS/Linux only): 
 ```sh
 ./googlesql/ffi/check_linked.sh <path to .a file>
 ```

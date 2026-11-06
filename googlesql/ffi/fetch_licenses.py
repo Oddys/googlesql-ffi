@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Downloads dependency licenses to LICENSES/ and stores metadata to licenses-metadata.json.
 
-Versions come from MODULE.bazel.lock and bazel/http_archive_deps.bzl (ICU).
+Versions come from MODULE.bazel.lock, bazel/http_archive_deps.bzl (ICU) and vcpkg.json (ICU on Windows).
 The list of linked dependencies comes from check_linked.sh.
 """
 
@@ -20,6 +20,7 @@ DEPS = {
     "googleapis": ("googleapis", "LICENSE"),
     "googletest": ("googletest", "LICENSE"),
     "icu": (None, "LICENSE"),
+    "icu-windows": ("vcpkg", "LICENSE"),
     "nlohmann_json": ("nlohmann_json", "LICENSE.MIT"),
     "protobuf": ("protobuf", "LICENSE"),
     "utf8_range": ("protobuf", "third_party/utf8_range/LICENSE"),
@@ -40,7 +41,11 @@ def fetch(url):
 
 
 def archive_url(module, lock):
-    """Returns the source archive URL of `module`, or of ICU if it is None."""
+    """Returns the source archive URL of `module`, or of ICU if it is None or "vcpkg"."""
+    if module == "vcpkg":
+        vcpkg = json.loads((ROOT / "vcpkg.json").read_text())
+        version = next(o["version"] for o in vcpkg["overrides"] if o["name"] == "icu")
+        return f"https://github.com/unicode-org/icu/archive/refs/tags/release-{version}.tar.gz"
     if module is None:
         bzl = (ROOT / "bazel/http_archive_deps.bzl").read_text()
         return re.search(r'"(https://\S+/icu4c-\S+)"', bzl)[1]
