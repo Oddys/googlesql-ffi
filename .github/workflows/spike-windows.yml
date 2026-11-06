@@ -28,6 +28,9 @@ jobs:
       # MSVC needs /std:c++20; the clang -std flag from .bazelrc is ignored by cl.
       - run: |
           bazel --output_user_root=C:/b build -c opt --keep_going \
+            --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl \
+            --extra_execution_platforms=//googlesql/ffi:windows_x86_64 \
+            --platforms=//googlesql/ffi:windows_x86_64 \
             //googlesql/ffi:googlesql_ffi_lib 2>&1 | tee build.log
       - if: always()
         uses: actions/upload-artifact@v7

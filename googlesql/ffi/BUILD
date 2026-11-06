@@ -132,3 +132,13 @@ platform(
         "@platforms//os:linux",
     ],
 )
+
+# SPIKE: clang-cl = MSVC ABI (.lib for Zig -msvc) but understands __int128/GNU-isms.
+platform(
+    name = "windows_x86_64",
+    constraint_values = [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+        "@bazel_tools//tools/cpp:clang-cl",
+    ],
+)
