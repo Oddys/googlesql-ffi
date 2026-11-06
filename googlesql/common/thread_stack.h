@@ -114,7 +114,10 @@ std::ostream& operator<<(std::ostream& os, const ThreadStackStats&);
 //
 std::string CurrentStackTrace();
 
+// Modified by Oddys: declared, never defined; pthread_t doesn't exist on Windows.
+#ifndef _WIN32
 std::optional<pthread_t> ThreadStackDumperThread();
+#endif
 }  // namespace googlesql
 
 #endif  // GOOGLESQL_COMMON_THREAD_STACK_H_

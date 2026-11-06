@@ -17,6 +17,11 @@
 #include "googlesql/public/strings.h"
 
 #include <ctype.h>
+// Modified by Oddys: strncasecmp is POSIX; the Windows CRT calls it _strnicmp.
+#ifdef _WIN32
+#include <string.h>
+#define strncasecmp _strnicmp
+#endif
 
 #include <iterator>
 #include <string>

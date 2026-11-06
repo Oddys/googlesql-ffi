@@ -38,6 +38,9 @@ class ResourceMeasurement {
     timespec ts;
 #ifdef CLOCK_THREAD_CPUTIME_ID
     clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+#elif defined(_WIN32)
+    // Modified by Oddys: no clock_gettime on Windows; thread CPU time isn't measured.
+    ts = {};
 #else
 #warn Thread CPU time measurement not supported
     ts = {};

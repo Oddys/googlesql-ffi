@@ -4,8 +4,10 @@
 #include <utility>
 #include <vector>
 
+#include "absl/flags/flag.h"
 #include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
+#include "googlesql/common/unicode_utils.h"
 #include "googlesql/ffi/helpers.h"
 #include "gtest/gtest.h"
 
@@ -284,5 +286,22 @@ INSTANTIATE_TEST_SUITE_P(
         "SELECT 1 2, ';', /* ; */ 3 -- ;\n;"
     )
 );
+
+// The default Windows stack is 1 MB (8 MB on Linux); the parser's stack guard must still trip.
+TEST(ParserFfiTest, DeeplyNestedInputReportsErrorWithoutCrashing) {
+  const std::string sql = "SELECT " + std::string(100000, '(') + "1;";
+  std::vector<GsqlError> errors = CheckGsql(sql);
+  ASSERT_GE(errors.size(), 1);
+  EXPECT_LT(errors[0].start, static_cast<int>(sql.size()));
+}
+
+// Label matching casefolds through ICU's NFKC_Casefold data when Unicode identifiers are on.
+// Without ICU data it falls back to ASCII lowercase, "straße" != "strasse", and this fails.
+TEST(ParserFfiTest, UnicodeLabelsMatchThroughIcuCasefolding) {
+  absl::SetFlag(&FLAGS_googlesql_idstring_allow_unicode_characters, true);
+  std::vector<GsqlError> errors = CheckGsql("`Straße`: BEGIN SELECT 1; END `STRASSE`;");
+  absl::SetFlag(&FLAGS_googlesql_idstring_allow_unicode_characters, false);
+  EXPECT_TRUE(errors.empty()) << errors[0].message;
+}
 
 }  // namespace

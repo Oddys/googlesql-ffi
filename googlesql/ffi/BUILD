@@ -38,6 +38,8 @@ cc_test(
     deps = [
         ":googlesql_ffi_lib",
         "//googlesql/base/testing:googlesql_gtest_main",
+        "//googlesql/common:unicode_utils",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],

@@ -21,6 +21,12 @@
 #define GOOGLESQL_COMMON_MULTIPRECISION_INT_IMPL_H_
 #include <string.h>
 #include <sys/types.h>
+// Modified by Oddys: POSIX <sys/types.h> supplies these elsewhere; Windows doesn't.
+#ifdef _WIN32
+#include <cstddef>
+using uint = unsigned int;
+using ssize_t = std::ptrdiff_t;
+#endif
 
 #include <algorithm>
 #include <array>

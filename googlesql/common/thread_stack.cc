@@ -15,9 +15,16 @@
 
 #include "googlesql/common/thread_stack.h"
 
-#include <pthread.h>
 #include <string.h>
+// Modified by Oddys: no pthreads on Windows; stack bounds come from the Win32 API.
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <pthread.h>
 #include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -43,8 +50,15 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 
+#ifdef _WIN32
+// Modified by Oddys: no PTHREAD_STACK_MIN on Windows. 64 KiB leaves room for
+// the guard pages at the low end of the stack, which the bounds below include.
+constexpr size_t kEnoughStackBytes = 64 * 1024;
+#else
+constexpr size_t kEnoughStackBytes = 2 * PTHREAD_STACK_MIN;
+#endif
 ABSL_FLAG(size_t, googlesql_enough_stack_bytes,
-          2 * PTHREAD_STACK_MIN, "Error if available stack falls below this"
+          kEnoughStackBytes, "Error if available stack falls below this"
 );
 
 namespace googlesql {
@@ -65,6 +79,13 @@ void ThreadStackStats::SetToCurrentThreadStackBoundaries() {
   thread_stack_high_ = absl::bit_cast<std::uintptr_t>(stack_addr);
   ABSL_DCHECK_GT(thread_stack_high_, stack_size);
   thread_stack_low_ = thread_stack_high_ - stack_size;
+#elif defined(_WIN32)
+  // Modified by Oddys: the whole reserved stack region, guard pages included.
+  ULONG_PTR low;
+  ULONG_PTR high;
+  GetCurrentThreadStackLimits(&low, &high);
+  thread_stack_low_ = low;
+  thread_stack_high_ = high;
 #else
   bool stack_limit_overridden = false;
   if (!stack_limit_overridden) {

@@ -18,11 +18,17 @@
 
 #include <errno.h>
 #include <fcntl.h>
-#include <libgen.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+// Modified by Oddys: Windows has no <libgen.h>/<unistd.h>; mkdir/access are _mkdir/_access.
+#ifdef _WIN32
+#include <direct.h>
+#include <io.h>
+#else
+#include <libgen.h>
 #include <unistd.h>
+#endif
 #include <cstddef>
 #include <cstdint>
 #include <ostream>
@@ -73,10 +79,17 @@ bool EnsureDirectoryExists(const char *path) {
     if (errno != ENOENT) {
       return false;
     }
+#ifdef _WIN32  // Modified by Oddys: no POSIX mkdir/S_ISDIR on Windows
+    if (_mkdir(path)) {
+      return false;
+    }
+  } else if ((dirStat.st_mode & _S_IFMT) != _S_IFDIR) {
+#else
     if (mkdir(path, 0766)) {
       return false;
     }
   } else if (!S_ISDIR(dirStat.st_mode)) {
+#endif
     return false;
   }
   return true;
@@ -133,8 +146,12 @@ bool InitLogging(const char *directory, const char *file_name, int level) {
     return false;
   }
   std::string log_path = get_log_directory() + get_log_basename();
+#ifdef _WIN32  // Modified by Oddys: no POSIX access on Windows; modes 0 = exists, 2 = writable
+  if (_access(log_path.c_str(), 0) == 0 && _access(log_path.c_str(), 2) != 0) {
+#else
   if (access(log_path.c_str(), F_OK) == 0 &&
       access(log_path.c_str(), W_OK) != 0) {
+#endif
     return false;
   }
   return true;

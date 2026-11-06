@@ -32,6 +32,10 @@
 #include <string.h>
 
 #include <cstdlib>
+#ifdef _WIN32
+#include <malloc.h>  // Modified by Oddys: _aligned_malloc, _aligned_free
+#include <cstddef>  // std::max_align_t
+#endif
 #include <iterator>
 #include <new>
 #include <vector>
@@ -43,6 +47,25 @@
 
 namespace googlesql_base {
 
+// Modified by Oddys: on Windows, _aligned_malloc memory must be released by
+// _aligned_free, so every block is allocated by block_malloc or aligned_malloc
+// and released by block_free.
+static void *block_malloc(size_t size) {
+#ifdef _WIN32
+  return _aligned_malloc(size, alignof(std::max_align_t));
+#else
+  return malloc(size);
+#endif
+}
+
+static void block_free(void *ptr) {
+#ifdef _WIN32
+  _aligned_free(ptr);
+#else
+  free(ptr);
+#endif
+}
+
 static void *aligned_malloc(size_t size, int minimum_alignment) {
   void *ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
@@ -50,11 +73,15 @@ static void *aligned_malloc(size_t size, int minimum_alignment) {
   // aligned to at least the size of a pointer.
   const int required_alignment = sizeof(void*);
   if (minimum_alignment < required_alignment)
-    return malloc(size);
+    return block_malloc(size);
+#ifdef _WIN32
+  return _aligned_malloc(size, static_cast<size_t>(minimum_alignment));
+#else
   if (posix_memalign(&ptr, static_cast<size_t>(minimum_alignment), size) != 0)
     return nullptr;
   else
     return ptr;
+#endif
 }
 
 // The value here doesn't matter until page_aligned_ is supported.
@@ -111,7 +138,7 @@ BaseArena::BaseArena(char* first, const size_t orig_block_size,
                                                                     kPageSize));
       ABSL_PCHECK(nullptr != first_blocks_[0].mem);
     } else {
-      first_blocks_[0].mem = reinterpret_cast<char*>(malloc(block_size_));
+      first_blocks_[0].mem = reinterpret_cast<char*>(block_malloc(block_size_));
     }
     first_blocks_[0].size = block_size_;
   }
@@ -129,7 +156,7 @@ BaseArena::~BaseArena() {
 #endif
   // The first X blocks stay allocated always by default.  Delete them now.
   for (int i = first_block_externally_owned_ ? 1 : 0; i < blocks_alloced_; ++i)
-    free(first_blocks_[i].mem);
+    block_free(first_blocks_[i].mem);
 }
 
 // ----------------------------------------------------------------------
@@ -275,7 +302,7 @@ BaseArena::AllocatedBlock* BaseArena::AllocNewBlock(const size_t block_size,
     block->mem = reinterpret_cast<char*>(aligned_malloc(adjusted_block_size,
                                                         adjusted_alignment));
   } else {
-    block->mem = reinterpret_cast<char*>(malloc(adjusted_block_size));
+    block->mem = reinterpret_cast<char*>(block_malloc(adjusted_block_size));
   }
   block->size = adjusted_block_size;
   ABSL_PCHECK(nullptr != block->mem)
@@ -374,7 +401,7 @@ void* BaseArena::GetMemoryFallback(const size_t size, const int alignment) {
 
 void BaseArena::FreeBlocks() {
   for ( int i = 1; i < blocks_alloced_; ++i ) {  // keep first block alloced
-    free(first_blocks_[i].mem);
+    block_free(first_blocks_[i].mem);
     first_blocks_[i].mem = nullptr;
     first_blocks_[i].size = 0;
   }
@@ -382,7 +409,7 @@ void BaseArena::FreeBlocks() {
   if (overflow_blocks_ != nullptr) {
     std::vector<AllocatedBlock>::iterator it;
     for (it = overflow_blocks_->begin(); it != overflow_blocks_->end(); ++it) {
-      free(it->mem);
+      block_free(it->mem);
     }
     delete overflow_blocks_;             // These should be used very rarely
     overflow_blocks_ = nullptr;
