@@ -45,13 +45,20 @@ jobs:
           ls vcpkg_installed/x64-windows-static/lib
       - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
       - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
+      # Static CRT (/MT) only: one /MD object makes consumers need msvcp140.dll or fail with LNK2038.
+      - if: runner.os == 'Windows'
+        run: |
+          directives=$(llvm-readobj --coff-directives bazel-bin/googlesql/ffi/libgooglesql_ffi.a)
+          grep -qi 'libcmt' <<<"$directives"
+          ! grep -qiE 'DEFAULTLIB:"?(msvcrt|msvcprt)' <<<"$directives"
       # Links a C program against just the .a and the header, the way as the library's consumers do
       - run: bazel test -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:link_smoke_test
       - name: Package
         run: |
           d=googlesql_ffi_${{ matrix.platform }}
           mkdir -p $d/lib $d/include
-          cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/
+          if [[ $RUNNER_OS == Windows ]]; then lib=googlesql_ffi.lib; else lib=libgooglesql_ffi.a; fi
+          cp bazel-bin/googlesql/ffi/libgooglesql_ffi.a $d/lib/$lib
           cp googlesql/ffi/googlesql_ffi.h $d/include/
           cp LICENSE $d/
           cp -r googlesql/ffi/LICENSES $d/

@@ -60,6 +60,8 @@ ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep -E '(libgooglesql_ffi_core|lib
 # cc_static_library does not fold in ICU (a rules_foreign_cc target with
 # prebuilt archives), so merge them in to get one self-contained archive.
 # $(AR) is libtool on macOS and ar on Linux; ar takes an MRI script via -M.
+# On Windows $(AR) is llvm-lib and every src is a .lib. Dash-style switches:
+# genrules run under Git Bash, whose path conversion rewrites /-prefixed args.
 genrule(
     name = "googlesql_ffi",
     srcs = [":googlesql_ffi_core"] + select({
@@ -72,6 +74,7 @@ genrule(
         "@platforms//os:linux": "(echo 'create $@'; " +
                                 "for a in " + ARCHIVES + "; do echo \"addlib $$a\"; done; " +
                                 "echo save; echo end) | $(AR) -M",
+        "@platforms//os:windows": "\"$(AR)\" -NOLOGO -OUT:$@ $(SRCS)",
     }),
     toolchains = ["@bazel_tools//tools/cpp:current_cc_toolchain"],
 )
@@ -87,7 +90,7 @@ cc_import(
 cc_test(
     name = "link_smoke_test",
     srcs = ["link_smoke_test.c"],
-    # No default branch: an unsupported OS (Windows) fails here, loudly.
+    # No default branch: an unsupported OS fails here, loudly.
     linkopts = select({
         "@platforms//os:macos": [
             "-lc++",
@@ -99,6 +102,7 @@ cc_test(
             "-lm",
             "-lpthread",
         ],
+        "@platforms//os:windows": [],
     }),
     deps = [":googlesql_ffi_import"],
 )
