@@ -791,6 +791,9 @@ absl::partial_ordering JsonCompareNumber(Int x, double y) {
   static_assert(std::numeric_limits<double>::radix == 2);
 #ifdef __EMSCRIPTEN__
   static_assert(std::numeric_limits<int64_t>::max() == (1ULL << 63) - 1);
+#elif defined(_WIN32)
+  // Modified by Oddys: long is 32-bit on Windows, so 1UL << 63 overflows.
+  static_assert(std::numeric_limits<int64_t>::max() == (1ULL << 63) - 1);
 #else
   static_assert(std::numeric_limits<int64_t>::max() == (1UL << 63) - 1);
 #endif

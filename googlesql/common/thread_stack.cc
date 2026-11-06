@@ -20,6 +20,9 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0602  // GetCurrentThreadStackLimits needs Windows 8+
+#endif
 #include <windows.h>
 #else
 #include <pthread.h>
@@ -50,15 +53,18 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 
-#ifdef _WIN32
 // Modified by Oddys: no PTHREAD_STACK_MIN on Windows. 64 KiB leaves room for
 // the guard pages at the low end of the stack, which the bounds below include.
-constexpr size_t kEnoughStackBytes = 64 * 1024;
+// A function, not constexpr: glibc's PTHREAD_STACK_MIN may be a sysconf() call.
+static size_t EnoughStackBytes() {
+#ifdef _WIN32
+  return 64 * 1024;
 #else
-constexpr size_t kEnoughStackBytes = 2 * PTHREAD_STACK_MIN;
+  return 2 * PTHREAD_STACK_MIN;
 #endif
+}
 ABSL_FLAG(size_t, googlesql_enough_stack_bytes,
-          kEnoughStackBytes, "Error if available stack falls below this"
+          EnoughStackBytes(), "Error if available stack falls below this"
 );
 
 namespace googlesql {
