@@ -29,9 +29,10 @@ jobs:
           bazelisk-cache: true
           disk-cache: ${{ matrix.platform }}
           repository-cache: true
-      # A short output root avoids Windows path-length failures
+      # A short output root avoids Windows path-length failures.
+      # Leading newline: setup-bazel's ~/.bazelrc doesn't end with one.
       - if: runner.os == 'Windows'
-        run: echo 'startup --output_user_root=C:/b' >> ~/.bazelrc
+        run: printf '\nstartup --output_user_root=C:/b\n' >> ~/.bazelrc
       - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
       - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
       # Links a C program against just the .a and the header, the way as the library's consumers do
