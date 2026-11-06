@@ -62,6 +62,11 @@ jobs:
           cp googlesql/ffi/googlesql_ffi.h $d/include/
           cp LICENSE $d/
           cp -r googlesql/ffi/LICENSES $d/
+          # Ship only the ICU license that is linked: vcpkg's (icu-windows) on Windows, icu elsewhere
+          if [[ $RUNNER_OS == Windows ]]; then unused=icu; else unused=icu-windows; fi
+          rm -r $d/LICENSES/$unused
+          m=$d/LICENSES/licenses-metadata.json
+          jq --arg u $unused 'map(select(.dependency != $u))' $m > $m.tmp && mv $m.tmp $m
           # A manifest makes `zig fetch` produce a named hash (<name>-<version>-...) instead of N-V-...
           cp googlesql/ffi/zig/${{ matrix.platform }}/build.zig.zon $d/
           # Tag build fails if the manifest version wasn't bumped to match the tag
