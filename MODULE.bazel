@@ -125,6 +125,16 @@ use_repo(
     "org_publicsuffix",
 )
 
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+
+# Modified by Oddys: Windows ICU from vcpkg (rules_foreign_cc configure_make can't build it with MSVC).
+# Only fetched when a Windows select() branch references it.
+new_local_repository(
+    name = "icu_windows",
+    build_file = "//bazel:icu_windows.BUILD",
+    path = "vcpkg_installed/x64-windows-static",
+)
+
 # Dev toolchain.
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 llvm.toolchain(

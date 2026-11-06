@@ -33,6 +33,16 @@ jobs:
       # Leading newline: setup-bazel's ~/.bazelrc doesn't end with one.
       - if: runner.os == 'Windows'
         run: printf '\nstartup --output_user_root=C:/b\n' >> ~/.bazelrc
+      - if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: vcpkg_installed
+          key: vcpkg-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+      # Static ICU with static CRT (/MT), see //bazel:icu_windows.BUILD
+      - if: runner.os == 'Windows'
+        run: |
+          "$(cygpath "$VCPKG_INSTALLATION_ROOT")/vcpkg" install --triplet x64-windows-static
+          ls vcpkg_installed/x64-windows-static/lib
       - run: bazel test -c opt //googlesql/ffi:googlesql_ffi_test
       - run: bazel build -c opt --platforms=//googlesql/ffi:${{ matrix.platform }} //googlesql/ffi:googlesql_ffi
       # Links a C program against just the .a and the header, the way as the library's consumers do

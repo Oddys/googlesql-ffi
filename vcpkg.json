@@ -1,0 +1,6 @@
+{
+  "name": "googlesql-ffi",
+  "version-string": "0",
+  "dependencies": ["icu"],
+  "overrides": [{"name": "icu", "version": "78.1"}]
+}

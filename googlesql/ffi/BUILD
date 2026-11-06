@@ -60,10 +60,10 @@ ARCHIVES = "$$(echo $(SRCS) | tr ' ' '\\n' | grep -E '(libgooglesql_ffi_core|lib
 # $(AR) is libtool on macOS and ar on Linux; ar takes an MRI script via -M.
 genrule(
     name = "googlesql_ffi",
-    srcs = [
-        ":googlesql_ffi_core",
-        "@icu//:icu",
-    ],
+    srcs = [":googlesql_ffi_core"] + select({
+        "@platforms//os:windows": ["@icu_windows//:libs"],
+        "//conditions:default": ["@icu//:icu"],
+    }),
     outs = ["libgooglesql_ffi.a"],
     cmd = select({
         "@platforms//os:macos": "$(AR) -static -no_warning_for_no_symbols -o $@ " + ARCHIVES,

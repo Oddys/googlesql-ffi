@@ -72,25 +72,26 @@ configure_make(
     ],
 )
 
+# Modified by Oddys: on Windows ICU comes from vcpkg (see //bazel:icu_windows.BUILD);
+# rules_foreign_cc configure_make can't build it with MSVC.
+ICU = select({
+    "@platforms//os:windows": ["@icu_windows//:icu"],
+    "//conditions:default": [":icu"],
+})
+
 cc_library(
     name = "common",
-    deps = [
-        "icu",
-    ],
+    deps = ICU,
 )
 
 cc_library(
     name = "headers",
-    deps = [
-        "icu",
-    ],
+    deps = ICU,
 )
 
 cc_library(
     name = "unicode",
-    deps = [
-        "icu",
-    ],
+    deps = ICU,
 )
 
 exports_files([
