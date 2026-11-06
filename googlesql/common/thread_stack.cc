@@ -20,10 +20,12 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#ifndef _WIN32_WINNT
-#define _WIN32_WINNT 0x0602  // GetCurrentThreadStackLimits needs Windows 8+
-#endif
 #include <windows.h>
+// Windows 8+. Declared here because <windows.h> hides it when _WIN32_WINNT is
+// older (Bazel's clang-cl toolchain sets 0x0601), and include order decides
+// whether a redefinition would take effect.
+extern "C" WINBASEAPI VOID WINAPI GetCurrentThreadStackLimits(PULONG_PTR low_limit,
+                                                              PULONG_PTR high_limit);
 #else
 #include <pthread.h>
 #include <unistd.h>
